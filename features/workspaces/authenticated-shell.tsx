@@ -17,6 +17,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import type { AuthUser } from "@/features/auth/auth-client";
 import { RequestBuilder } from "@/features/requests/request-builder";
@@ -130,15 +131,31 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         return exists ? items.map((item) => (item.id === saved.id ? saved : item)) : [...items, saved];
       });
       setError(null);
+      toast.success("Environment actualizado", {
+        description: variableId
+          ? `La variable ${saved.key} se actualizó en ${activeEnvironment.name}.`
+          : `La variable ${saved.key} se añadió a ${activeEnvironment.name}.`,
+      });
     } catch (cause) {
       setError(String(cause));
+      toast.error("No se pudo actualizar el environment", {
+        description: String(cause),
+      });
       throw cause;
     }
   }
 
   async function removeVariable(variableId: string) {
-    await workspaceApi.removeVariable(user.id, variableId);
-    setVariables((items) => items.filter((item) => item.id !== variableId));
+    try {
+      await workspaceApi.removeVariable(user.id, variableId);
+      setVariables((items) => items.filter((item) => item.id !== variableId));
+      toast.success("Environment actualizado", {
+        description: `La variable se eliminó de ${activeEnvironment?.name ?? "este environment"}.`,
+      });
+    } catch (cause) {
+      toast.error("No se pudo eliminar la variable", { description: String(cause) });
+      throw cause;
+    }
   }
 
   function openRequestEditor() {
@@ -157,8 +174,8 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   }
 
   return (
-    <div className="grid min-h-screen grid-cols-[250px_minmax(0,1fr)] bg-[#0b0715] text-foreground max-md:grid-cols-1">
-      <aside className="flex min-h-screen flex-col border-r border-white/[0.06] bg-[#0d0818]/95 max-md:hidden">
+    <div className="grid h-screen min-h-0 grid-cols-[250px_minmax(0,1fr)] overflow-hidden bg-[#0b0715] text-foreground max-md:grid-cols-1">
+      <aside className="flex h-full min-h-0 flex-col border-r border-white/[0.06] bg-[#0d0818]/95 max-md:hidden">
         <div className="flex h-[70px] items-center gap-3 border-b border-white/[0.06] px-4">
           <Image src="/flux-icon.png" alt="" width={34} height={34} />
           <div className="min-w-0">
@@ -195,7 +212,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         </div>
       </aside>
 
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
         <header className="flex h-[70px] shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#100a1d]/80 px-5">
           <div className="flex min-w-0 items-center gap-2 text-xs">
             <Box size={15} className="text-violet-400" />
@@ -215,7 +232,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
           </div>
         </header>
 
-        <main className="relative flex flex-1 items-center justify-center overflow-y-auto p-6">
+        <main className={`relative flex min-h-0 flex-1 items-center justify-center p-3 xl:p-6 ${mainView === "request" ? "overflow-hidden" : "overflow-y-auto"}`}>
           {loading ? <p className="text-sm text-muted-foreground">Cargando workspaces…</p> : null}
           {!loading && !activeWorkspace ? <EmptyWorkspace onCreate={() => setWorkspaceForm(true)} /> : null}
           {!loading && activeWorkspace && !activeEnvironment ? (
@@ -263,7 +280,21 @@ function EnvironmentView({ environment, variables, onBack, onSaveVariable, onRem
 
 function VariablesPanel({ environment, variables, onSave, onRemove }: { environment: Environment; variables: EnvironmentVariable[]; onSave: (id: string | undefined, key: string, value: string) => Promise<void>; onRemove: (id: string) => Promise<void> }) {
   const [adding, setAdding] = useState(false);
-  return <div className="mt-5 overflow-hidden rounded-xl border border-white/[0.07] bg-[#120c1e]"><div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4"><div><div className="flex items-center gap-2 text-sm font-medium text-white"><KeyRound size={15} className="text-violet-400" /> Variables · {environment.name}</div><p className="mt-1 text-[11px] text-muted-foreground">Usa las claves en requests con <code className="text-violet-300">{"{{CLAVE}}"}</code>.</p></div><button type="button" onClick={() => setAdding(true)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-violet-300/15 bg-violet-500/10 px-3 text-xs text-violet-200 hover:bg-violet-500/15"><Plus size={13} /> Variable</button></div><div className="grid grid-cols-[minmax(150px,0.7fr)_minmax(220px,1.3fr)_76px] border-b border-white/[0.05] px-5 py-2 text-[9px] font-semibold tracking-[0.14em] text-muted-foreground uppercase"><span>Clave</span><span>Valor</span><span /></div>{variables.length === 0 && !adding ? <p className="px-5 py-10 text-center text-xs text-muted-foreground">Este environment aún no tiene variables.</p> : null}{variables.map((variable) => <VariableRow key={variable.id} variable={variable} onSave={onSave} onRemove={onRemove} />)}{adding ? <VariableRow onSave={async (id, key, value) => { await onSave(id, key, value); setAdding(false); }} onRemove={async () => setAdding(false)} /> : null}</div>;
+  const [pendingDelete, setPendingDelete] = useState<EnvironmentVariable | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      await onRemove(pendingDelete.id);
+      setPendingDelete(null);
+    } catch {
+      // El error ya se muestra mediante la notificación global.
+    } finally {
+      setDeleting(false);
+    }
+  }
+  return <><div className="mt-5 overflow-hidden rounded-xl border border-white/[0.07] bg-[#120c1e]"><div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4"><div><div className="flex items-center gap-2 text-sm font-medium text-white"><KeyRound size={15} className="text-violet-400" /> Variables · {environment.name}</div><p className="mt-1 text-[11px] text-muted-foreground">Usa las claves en requests con <code className="text-violet-300">{"{{CLAVE}}"}</code>.</p></div><button type="button" onClick={() => setAdding(true)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-violet-300/15 bg-violet-500/10 px-3 text-xs text-violet-200 hover:bg-violet-500/15"><Plus size={13} /> Variable</button></div><div className="grid grid-cols-[minmax(150px,0.7fr)_minmax(220px,1.3fr)_76px] border-b border-white/[0.05] px-5 py-2 text-[9px] font-semibold tracking-[0.14em] text-muted-foreground uppercase"><span>Clave</span><span>Valor</span><span /></div>{variables.length === 0 && !adding ? <p className="px-5 py-10 text-center text-xs text-muted-foreground">Este environment aún no tiene variables.</p> : null}{variables.map((variable) => <VariableRow key={variable.id} variable={variable} onSave={onSave} onRemove={async () => setPendingDelete(variable)} />)}{adding ? <VariableRow onSave={async (id, key, value) => { await onSave(id, key, value); setAdding(false); }} onRemove={async () => setAdding(false)} /> : null}</div>{pendingDelete ? <ConfirmDeleteDialog variable={pendingDelete} environment={environment} deleting={deleting} onCancel={() => setPendingDelete(null)} onConfirm={confirmDelete} /> : null}</>;
 }
 
 function VariableRow({ variable, onSave, onRemove }: { variable?: EnvironmentVariable; onSave: (id: string | undefined, key: string, value: string) => Promise<void>; onRemove: (id: string) => Promise<void> }) {
@@ -272,6 +303,10 @@ function VariableRow({ variable, onSave, onRemove }: { variable?: EnvironmentVar
   const [saving, setSaving] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setSaving(true); try { await onSave(variable?.id, key, value); } finally { setSaving(false); } }
   return <form onSubmit={submit} className="grid grid-cols-[minmax(150px,0.7fr)_minmax(220px,1.3fr)_76px] items-center gap-3 border-b border-white/[0.045] px-5 py-2.5 last:border-0"><input required value={key} onChange={(event) => setKey(event.target.value.toUpperCase())} placeholder="BASE_URL" pattern="[A-Za-z_][A-Za-z0-9_]*" maxLength={100} className="h-9 rounded-lg border border-white/[0.07] bg-black/15 px-3 font-mono text-xs text-violet-200 outline-none focus:border-violet-400/40"/><input value={value} onChange={(event) => setValue(event.target.value)} placeholder="https://api.example.com" className="h-9 min-w-0 rounded-lg border border-white/[0.07] bg-black/15 px-3 font-mono text-xs text-white outline-none focus:border-violet-400/40"/><div className="flex justify-end gap-1"><button disabled={saving} type="submit" className="h-8 rounded-md px-2 text-[11px] text-violet-200 hover:bg-violet-400/10 disabled:opacity-50">{saving ? "…" : "Guardar"}</button><button type="button" onClick={() => onRemove(variable?.id ?? "")} aria-label="Eliminar variable" className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-red-400/10 hover:text-red-300"><Trash2 size={13} /></button></div></form>;
+}
+
+function ConfirmDeleteDialog({ variable, environment, deleting, onCancel, onConfirm }: { variable: EnvironmentVariable; environment: Environment; deleting: boolean; onCancel: () => void; onConfirm: () => Promise<void> }) {
+  return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/70 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-variable-title"><div className="w-full max-w-sm rounded-2xl border border-rose-300/10 bg-[#151020] p-6 shadow-2xl"><div className="grid size-10 place-items-center rounded-xl bg-rose-400/10 text-rose-300"><Trash2 size={18} /></div><h2 id="delete-variable-title" className="mt-4 font-sans text-lg font-semibold text-white">Eliminar variable</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">¿Quieres eliminar <code className="rounded bg-violet-400/10 px-1.5 py-0.5 text-violet-200">{variable.key}</code> de <span className="text-white">{environment.name}</span>?</p><p className="mt-2 text-xs text-rose-200/70">Las peticiones que utilicen {`{{${variable.key}}}`} dejarán de resolver ese valor.</p><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onCancel} disabled={deleting} className="h-9 rounded-lg px-3 text-xs text-muted-foreground hover:bg-white/5 hover:text-white disabled:opacity-50">Cancelar</button><button type="button" onClick={onConfirm} disabled={deleting} autoFocus className="h-9 rounded-lg bg-rose-600 px-4 text-xs font-semibold text-white hover:bg-rose-500 disabled:cursor-wait disabled:opacity-60">{deleting ? "Eliminando…" : "Eliminar variable"}</button></div></div></div>;
 }
 
 function NameDialog({ title, label, onClose, onSubmit, withColor = false }: { title: string; label: string; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; withColor?: boolean }) {
