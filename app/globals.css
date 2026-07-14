@@ -49,38 +49,39 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  color-scheme: dark;
+  --background: #0b0717;
+  --foreground: #f2efff;
+  --card: #151025;
+  --card-foreground: #f2efff;
+  --popover: #17112a;
+  --popover-foreground: #f2efff;
+  --primary: #7c3cff;
+  --primary-foreground: #ffffff;
+  --secondary: #211738;
+  --secondary-foreground: #e9e2ff;
+  --muted: #1b142d;
+  --muted-foreground: #9d94b5;
+  --accent: #2c1b50;
+  --accent-foreground: #f4f0ff;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: rgb(169 139 255 / 14%);
+  --input: rgb(169 139 255 / 18%);
+  --ring: #8b5cff;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: #100b1e;
+  --sidebar-foreground: #e9e2ff;
+  --sidebar-primary: #7c3cff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #211738;
+  --sidebar-accent-foreground: #f4f0ff;
+  --sidebar-border: rgb(169 139 255 / 12%);
+  --sidebar-ring: #8b5cff;
 }
 
 .dark {
@@ -123,8 +124,31 @@
   }
   body {
     @apply bg-background text-foreground;
+    margin: 0;
   }
   html {
     @apply font-mono;
   }
+}
+
+.flux-app-background {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 38%, rgb(105 48 207 / 22%) 0, rgb(52 24 102 / 10%) 26%, transparent 58%),
+    linear-gradient(180deg, #100a20 0%, #0b0717 54%, #080512 100%);
+}
+
+.flux-app-background::before {
+  position: fixed;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  background-image:
+    linear-gradient(rgb(255 255 255 / 1.5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 1.5%) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at center, black, transparent 72%);
 }
