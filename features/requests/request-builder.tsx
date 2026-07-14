@@ -4,13 +4,14 @@ import {
   Check,
   ChevronDown,
   CirclePlus,
+  ClipboardPaste,
   Copy,
   LoaderCircle,
   Save,
   Send,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { FormEvent, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -26,6 +27,7 @@ import {
 } from "./request-client";
 import { JsonTree } from "./json-tree";
 import { EnvironmentAutocomplete } from "./environment-autocomplete";
+import { parseCurlCommand } from "./curl-parser";
 
 const HTTP_METHODS = [
   "GET",
@@ -108,6 +110,7 @@ export function RequestBuilder({
   const [requestError, setRequestError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [curlImporterOpen, setCurlImporterOpen] = useState(false);
   const resolvedUrl = resolveEnvironmentVariables(url, variables);
 
   function updateParams(next: Pair[]) {
@@ -245,11 +248,72 @@ export function RequestBuilder({
     }
   }
 
+  function importCurl(source: string) {
+    const parsed = parseCurlCommand(source);
+    if (!HTTP_METHODS.includes(parsed.method as HttpMethod)) {
+      throw new Error(`El método ${parsed.method} no está disponible en Flux.`);
+    }
+
+    setMethod(parsed.method as HttpMethod);
+    setUrl(parsed.url);
+    setParams(paramsFromUrl(parsed.url));
+    setHeaders(
+      parsed.headers.length
+        ? parsed.headers.map((header, index) => ({
+            id: `curl-header-${index}-${Date.now()}`,
+            enabled: true,
+            key: header.name,
+            value: header.value,
+          }))
+        : [
+            {
+              id: `curl-header-${Date.now()}`,
+              enabled: true,
+              key: "",
+              value: "",
+            },
+          ],
+    );
+    setBodyType(parsed.bodyType);
+    setBody(parsed.body);
+    if (parsed.auth.type === "bearer") {
+      const token = parsed.auth.token;
+      setAuthType("bearer");
+      setAuth((current) => ({ ...current, token }));
+    } else if (parsed.auth.type === "basic") {
+      const { username, password } = parsed.auth;
+      setAuthType("basic");
+      setAuth((current) => ({
+        ...current,
+        username,
+        password,
+      }));
+    } else {
+      setAuthType("none");
+    }
+    setResponse(null);
+    setRequestError(null);
+    setCurlImporterOpen(false);
+    toast.success("cURL importado", {
+      description:
+        "Revisa la configuración y guarda la petición cuando esté lista.",
+    });
+  }
+
   return (
     <section className="h-full min-h-0 w-full self-start pt-1">
-      <p className="text-[10px] tracking-[0.16em] text-muted-foreground uppercase">
-        {request.name} · {workspace.name}
-      </p>
+      <div className="flex h-6 items-center justify-between gap-3">
+        <p className="truncate text-[10px] tracking-[0.16em] text-muted-foreground uppercase">
+          {request.name} · {workspace.name}
+        </p>
+        <button
+          type="button"
+          onClick={() => setCurlImporterOpen(true)}
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-white/[0.07] px-2.5 text-[10px] text-muted-foreground hover:border-violet-400/20 hover:bg-violet-400/10 hover:text-violet-200"
+        >
+          <ClipboardPaste size={12} /> Importar cURL
+        </button>
+      </div>
       <div className="mt-3 grid h-[calc(100%-24px)] min-h-0 grid-cols-[minmax(460px,1.08fr)_minmax(380px,0.92fr)] gap-4 max-xl:grid-cols-1 max-xl:grid-rows-[minmax(0,1fr)_minmax(0,0.72fr)] max-lg:gap-2">
         <div className="min-h-0 overflow-y-auto pr-1">
           <div className="rounded-xl border border-white/[0.07] bg-[#120c1e] p-4">
@@ -407,6 +471,12 @@ export function RequestBuilder({
         </div>
         <ResponsePanel response={response} loading={sending} />
       </div>
+      {curlImporterOpen ? (
+        <CurlImportDialog
+          onClose={() => setCurlImporterOpen(false)}
+          onImport={importCurl}
+        />
+      ) : null}
     </section>
   );
 }
@@ -825,6 +895,92 @@ function ResponseViewButton({
     </button>
   );
 }
+
+function CurlImportDialog({
+  onClose,
+  onImport,
+}: {
+  onClose: () => void;
+  onImport: (source: string) => void;
+}) {
+  const [source, setSource] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    try {
+      onImport(source);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] grid place-items-center bg-black/70 px-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="curl-import-title"
+    >
+      <form
+        onSubmit={submit}
+        className="w-full max-w-2xl rounded-2xl border border-violet-200/10 bg-[#151020] p-6 shadow-2xl shadow-black/60"
+      >
+        <div className="flex items-start gap-3">
+          <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-violet-500/10 text-violet-300">
+            <ClipboardPaste size={18} />
+          </div>
+          <div>
+            <h2
+              id="curl-import-title"
+              className="font-sans text-lg font-semibold text-white"
+            >
+              Importar desde cURL
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Flux analizará el comando localmente. No lo ejecutará ni enviará
+              información hasta que pulses Enviar.
+            </p>
+          </div>
+        </div>
+        <label className="mt-5 block text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+          Comando cURL
+          <textarea
+            value={source}
+            onChange={(event) => setSource(event.target.value)}
+            required
+            autoFocus
+            spellCheck={false}
+            placeholder={`curl --request POST 'https://api.example.com/users' \\\n+  --header 'Content-Type: application/json' \\\n+  --data '{"name":"Flux"}'`}
+            className="mt-2 min-h-56 w-full resize-y rounded-xl border border-white/10 bg-[#0d0818] p-4 font-mono text-xs leading-6 text-violet-100 outline-none placeholder:text-muted-foreground/30 focus:border-violet-400/40"
+          />
+        </label>
+        {error ? (
+          <p className="mt-3 rounded-lg border border-rose-400/15 bg-rose-400/[0.07] px-3 py-2 text-xs text-rose-200">
+            {error}
+          </p>
+        ) : null}
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 rounded-lg px-3 text-xs text-muted-foreground hover:bg-white/5 hover:text-white"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-violet-600 px-4 text-xs font-semibold text-white hover:bg-violet-500"
+          >
+            <ClipboardPaste size={13} /> Importar petición
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function statusColor(status: number) {
   if (status >= 200 && status < 300)
     return "bg-emerald-400/15 text-emerald-300";
@@ -859,4 +1015,19 @@ function parseSavedValue<T>(source: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function paramsFromUrl(url: string): Pair[] {
+  const query = url.split("#", 1)[0].split("?", 2)[1] ?? "";
+  const rows = [...new URLSearchParams(query).entries()].map(
+    ([key, value], index) => ({
+      id: `curl-param-${index}-${Date.now()}`,
+      enabled: true,
+      key,
+      value,
+    }),
+  );
+  return rows.length
+    ? rows
+    : [{ id: `curl-param-${Date.now()}`, enabled: true, key: "", value: "" }];
 }

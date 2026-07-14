@@ -78,7 +78,7 @@ pub fn initialize(path: &Path) -> Result<()> {
             workspace_id TEXT NOT NULL,
             name         TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 100),
             method       TEXT NOT NULL DEFAULT 'GET',
-            url          TEXT NOT NULL DEFAULT '{{BASE_URL}}/v1/resource',
+            url          TEXT NOT NULL DEFAULT '',
             params_json  TEXT NOT NULL DEFAULT '[]',
             headers_json TEXT NOT NULL DEFAULT '[]',
             auth_type    TEXT NOT NULL DEFAULT 'none',

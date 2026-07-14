@@ -127,7 +127,7 @@ pub fn create_saved_request(
         .execute(
             "INSERT INTO saved_requests
              (id, workspace_id, name, method, url, params_json, headers_json, auth_type, auth_json, body_type, body)
-             VALUES (?1, ?2, ?3, 'GET', '{{BASE_URL}}/v1/resource',
+             VALUES (?1, ?2, ?3, 'GET', '',
                      '[{\"id\":\"param-1\",\"enabled\":true,\"key\":\"\",\"value\":\"\"}]',
                      '[{\"id\":\"header-1\",\"enabled\":true,\"key\":\"Content-Type\",\"value\":\"application/json\"}]',
                      'none', '{\"token\":\"\",\"username\":\"\",\"password\":\"\",\"apiKeyName\":\"X-API-Key\",\"apiKeyValue\":\"\"}',
