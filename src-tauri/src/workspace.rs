@@ -51,6 +51,14 @@ pub struct WorkspaceScope {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RenameWorkspaceInput {
+    user_id: String,
+    workspace_id: String,
+    name: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateEnvironmentInput {
     user_id: String,
     workspace_id: String,
@@ -122,6 +130,46 @@ pub fn create_workspace(
         .query_row(
             "SELECT id, user_id, name, created_at FROM workspaces WHERE id = ?1",
             [&id],
+            |row| {
+                Ok(Workspace {
+                    id: row.get(0)?,
+                    user_id: row.get(1)?,
+                    name: row.get(2)?,
+                    created_at: row.get(3)?,
+                })
+            },
+        )
+        .map_err(internal_error)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameEnvironmentInput {
+    user_id: String,
+    environment_id: String,
+    name: String,
+}
+
+#[tauri::command]
+pub fn rename_workspace(
+    state: State<'_, DatabaseState>,
+    input: RenameWorkspaceInput,
+) -> Result<Workspace, String> {
+    let name = validate_name(&input.name, 60, "workspace")?;
+    let connection = state.connect().map_err(internal_error)?;
+    let updated = connection
+        .execute(
+            "UPDATE workspaces SET name = ?1 WHERE id = ?2 AND user_id = ?3",
+            params![name, input.workspace_id, input.user_id],
+        )
+        .map_err(friendly_constraint_error)?;
+    if updated == 0 {
+        return Err("El workspace no existe o no pertenece a este usuario.".to_string());
+    }
+    connection
+        .query_row(
+            "SELECT id, user_id, name, created_at FROM workspaces WHERE id = ?1",
+            [&input.workspace_id],
             |row| {
                 Ok(Workspace {
                     id: row.get(0)?,
@@ -210,6 +258,40 @@ pub fn create_environment(
         .query_row(
             "SELECT id, workspace_id, name, color, created_at FROM environments WHERE id = ?1",
             [&id],
+            |row| {
+                Ok(Environment {
+                    id: row.get(0)?,
+                    workspace_id: row.get(1)?,
+                    name: row.get(2)?,
+                    color: row.get(3)?,
+                    created_at: row.get(4)?,
+                })
+            },
+        )
+        .map_err(internal_error)
+}
+
+#[tauri::command]
+pub fn rename_environment(
+    state: State<'_, DatabaseState>,
+    input: RenameEnvironmentInput,
+) -> Result<Environment, String> {
+    let name = validate_name(&input.name, 40, "environment")?;
+    let connection = state.connect().map_err(internal_error)?;
+    let updated = connection
+        .execute(
+            "UPDATE environments SET name = ?1
+             WHERE id = ?2 AND workspace_id IN (SELECT id FROM workspaces WHERE user_id = ?3)",
+            params![name, input.environment_id, input.user_id],
+        )
+        .map_err(friendly_constraint_error)?;
+    if updated == 0 {
+        return Err("El environment no existe o no pertenece a este usuario.".to_string());
+    }
+    connection
+        .query_row(
+            "SELECT id, workspace_id, name, color, created_at FROM environments WHERE id = ?1",
+            [&input.environment_id],
             |row| {
                 Ok(Environment {
                     id: row.get(0)?,

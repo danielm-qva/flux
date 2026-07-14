@@ -8,12 +8,16 @@ export const workspaceApi = {
   list: (userId: string) => invoke<Workspace[]>("list_workspaces", { userId }),
   create: (userId: string, name: string) =>
     invoke<Workspace>("create_workspace", { input: { userId, name } }),
+  rename: (userId: string, workspaceId: string, name: string) =>
+    invoke<Workspace>("rename_workspace", { input: { userId, workspaceId, name } }),
   remove: (userId: string, workspaceId: string) =>
     invoke<void>("delete_workspace", { input: { userId, workspaceId } }),
   listEnvironments: (userId: string, workspaceId: string) =>
     invoke<Environment[]>("list_environments", { input: { userId, workspaceId } }),
   createEnvironment: (userId: string, workspaceId: string, name: string, color = "#8b5cf6") =>
     invoke<Environment>("create_environment", { input: { userId, workspaceId, name, color } }),
+  renameEnvironment: (userId: string, environmentId: string, name: string) =>
+    invoke<Environment>("rename_environment", { input: { userId, environmentId, name } }),
   removeEnvironment: (userId: string, environmentId: string) =>
     invoke<void>("delete_environment", { input: { userId, environmentId } }),
   listVariables: (userId: string, environmentId: string) =>

@@ -72,6 +72,27 @@ pub fn initialize(path: &Path) -> Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_environment_variables_environment
             ON environment_variables(environment_id);
+
+        CREATE TABLE IF NOT EXISTS saved_requests (
+            id           TEXT PRIMARY KEY NOT NULL,
+            workspace_id TEXT NOT NULL,
+            name         TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 100),
+            method       TEXT NOT NULL DEFAULT 'GET',
+            url          TEXT NOT NULL DEFAULT '{{BASE_URL}}/v1/resource',
+            params_json  TEXT NOT NULL DEFAULT '[]',
+            headers_json TEXT NOT NULL DEFAULT '[]',
+            auth_type    TEXT NOT NULL DEFAULT 'none',
+            auth_json    TEXT NOT NULL DEFAULT '{}',
+            body_type    TEXT NOT NULL DEFAULT 'json',
+            body         TEXT NOT NULL DEFAULT '',
+            created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+            UNIQUE(workspace_id, name COLLATE NOCASE)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_saved_requests_workspace
+            ON saved_requests(workspace_id);
         ",
     )?;
     Ok(())
