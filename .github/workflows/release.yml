@@ -41,7 +41,7 @@ jobs:
       - name: Verify frontend
         run: |
           npm run lint
-          npm run build
+          npm run build:web
 
       - name: Build, sign and publish release
         uses: tauri-apps/tauri-action@v1
