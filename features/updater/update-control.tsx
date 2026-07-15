@@ -17,9 +17,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type UpdateStatus =
   "idle" | "checking" | "available" | "downloading" | "current" | "error";
 
-type Props = { currentVersion: string | null };
+type Props = { currentVersion: string | null; variant?: "icon" | "panel" | "headless"; autoCheck?: boolean };
 
-export function UpdateControl({ currentVersion }: Props) {
+export function UpdateControl({ currentVersion, variant = "icon", autoCheck = true }: Props) {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<UpdateStatus>("idle");
   const [update, setUpdate] = useState<Update | null>(null);
@@ -54,10 +54,10 @@ export function UpdateControl({ currentVersion }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!isTauri() || !autoCheck) return;
     const timer = window.setTimeout(() => void checkForUpdate(false), 2_000);
     return () => window.clearTimeout(timer);
-  }, [checkForUpdate]);
+  }, [autoCheck, checkForUpdate]);
 
   async function installUpdate() {
     if (!update || status === "downloading") return;
@@ -90,14 +90,14 @@ export function UpdateControl({ currentVersion }: Props) {
 
   return (
     <>
-      <button
+      {variant !== "headless" ? <button
         type="button"
         onClick={() => {
           setOpen(true);
           if (status === "idle" || status === "error")
             void checkForUpdate(true);
         }}
-        className="relative hidden size-9 shrink-0 place-items-center rounded-lg border border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white xl:grid"
+        className={variant === "panel" ? "relative flex w-full items-center gap-4 rounded-xl border border-white/[0.07] bg-black/15 p-4 text-left hover:border-violet-400/20 hover:bg-violet-500/[0.06]" : "relative hidden size-9 shrink-0 place-items-center rounded-lg border border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white xl:grid"}
         aria-label={
           hasUpdate
             ? "Actualización disponible"
@@ -109,11 +109,17 @@ export function UpdateControl({ currentVersion }: Props) {
             : "Configuración y actualizaciones"
         }
       >
-        <Settings size={15} />
+        {variant === "panel" ? (
+          <>
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-violet-500/10 text-violet-300"><RefreshCw size={17} /></span>
+            <span className="min-w-0 flex-1"><span className="block text-sm font-medium text-white">Actualizaciones de Flux</span><span className="mt-1 block text-[11px] text-muted-foreground">Instalada v{currentVersion ?? "—"} · {hasUpdate ? `v${update?.version} disponible` : status === "checking" ? "Buscando actualizaciones…" : "Comprobar estado"}</span></span>
+            <span className="text-xs font-medium text-violet-300">Abrir</span>
+          </>
+        ) : <Settings size={15} />}
         {hasUpdate ? (
           <span className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full border-2 border-[#100a1d] bg-violet-400 shadow-[0_0_9px_rgba(167,139,250,0.8)]" />
         ) : null}
-      </button>
+      </button> : null}
 
       {open ? (
         <div

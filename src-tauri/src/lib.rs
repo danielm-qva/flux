@@ -3,6 +3,7 @@ mod database;
 mod organization;
 mod request;
 mod workspace;
+mod workspace_transfer;
 
 use tauri::Manager;
 
@@ -12,6 +13,8 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             auth::register_user,
             auth::login_user,
@@ -40,7 +43,10 @@ pub fn run() {
             workspace::delete_environment,
             workspace::list_environment_variables,
             workspace::save_environment_variable,
-            workspace::delete_environment_variable
+            workspace::delete_environment_variable,
+            workspace_transfer::export_workspace,
+            workspace_transfer::preview_workspace_import,
+            workspace_transfer::import_workspace
         ])
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;

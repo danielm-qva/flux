@@ -9,20 +9,25 @@ import {
   Clock3,
   FileJson2,
   FolderKanban,
+  FolderPlus,
   KeyRound,
   LogOut,
   Copy,
   MoreVertical,
   Plus,
   Pencil,
+  Settings,
   Trash2,
 } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { AuthUser } from "@/features/auth/auth-client";
-import { UpdateControl } from "@/features/updater/update-control";
 import { WhatsNewModal } from "@/features/updater/whats-new-modal";
+import { UpdateControl } from "@/features/updater/update-control";
+import { SettingsView, ThemeRuntime } from "@/features/settings/settings-view";
+import type { WorkspaceImport } from "@/features/workspaces/workspace-transfer-client";
+import { WorkspaceTransfer } from "@/features/workspaces/workspace-transfer";
 import { RequestBuilder } from "@/features/requests/request-builder";
 import { RequestTree } from "@/features/requests/request-tree";
 import {
@@ -41,7 +46,7 @@ import {
 } from "./workspace-client";
 
 type Props = { user: AuthUser; onLogout: () => Promise<void> };
-type MainView = "request" | "environment";
+type MainView = "request" | "environment" | "settings";
 
 export function AuthenticatedShell({ user, onLogout }: Props) {
   const requestListRef = useRef<HTMLDivElement>(null);
@@ -281,11 +286,21 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     event.preventDefault();
     if (!activeWorkspace) return;
     const form = new FormData(event.currentTarget);
+    const name = String(form.get("name") ?? "").trim();
+    const duplicated = requests.some(
+      (request) => request.name.localeCompare(name, undefined, { sensitivity: "accent" }) === 0,
+    );
+    if (duplicated) {
+      toast.warning("Ese nombre ya está en uso", {
+        description: "Usa un nombre diferente para identificar la petición en este workspace.",
+      });
+      return;
+    }
     try {
       const created = await savedRequestApi.create(
         user.id,
         activeWorkspace.id,
-        String(form.get("name") ?? ""),
+        name,
         requestFolderId,
       );
       setRequests((items) => [...items, created]);
@@ -298,7 +313,6 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         description: `${created.name} se añadió a ${activeWorkspace.name}.`,
       });
     } catch (cause) {
-      setError(String(cause));
       toast.error("No se pudo crear la petición", {
         description: String(cause),
       });
@@ -394,11 +408,16 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     event.preventDefault();
     if (!requestToRename) return;
     const form = new FormData(event.currentTarget);
+    const nextName = String(form.get("name") ?? "").trim();
+    if (requests.some((request) => request.id !== requestToRename.id && request.name.localeCompare(nextName, undefined, { sensitivity: "accent" }) === 0)) {
+      toast.warning("Ese nombre ya está en uso", { description: "Elige otro nombre para la petición." });
+      return;
+    }
     try {
       const renamed = await savedRequestApi.rename(
         user.id,
         requestToRename.id,
-        String(form.get("name") ?? ""),
+        nextName,
       );
       setRequests((items) =>
         items.map((request) => (request.id === renamed.id ? renamed : request)),
@@ -409,7 +428,6 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         description: `${requestToRename.name} ahora se llama ${renamed.name}.`,
       });
     } catch (cause) {
-      setError(String(cause));
       toast.error("No se pudo renombrar la petición", {
         description: String(cause),
       });
@@ -522,6 +540,17 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   function changeEnvironment(environmentId: string) {
     setActiveEnvironmentId(environmentId);
     setMainView("request");
+  }
+
+  async function workspaceImported(result: WorkspaceImport) {
+    try {
+      const items = await workspaceApi.list(user.id);
+      setWorkspaces(items);
+      changeWorkspace(result.workspaceId);
+      toast.success("Workspace disponible", { description: `${result.workspaceName} se añadió a Flux.` });
+    } catch (cause) {
+      toast.error("El workspace se importó, pero no se pudo abrir", { description: String(cause) });
+    }
   }
 
   return (
@@ -707,6 +736,12 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                 </button>
               </>
             ) : null}
+            <WorkspaceTransfer
+              variant="toolbar"
+              userId={user.id}
+              workspace={activeWorkspace}
+              onImported={(result) => void workspaceImported(result)}
+            />
           </div>
           <div className="flex min-w-0 shrink-0 items-center gap-1 xl:gap-2">
             {activeWorkspace ? (
@@ -741,7 +776,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                 ) : null}
               </>
             ) : null}
-            <UpdateControl currentVersion={systemVersion} />
+            <button type="button" onClick={() => setMainView("settings")} title="Settings" aria-label="Abrir settings" className={`relative hidden size-9 shrink-0 place-items-center rounded-lg border xl:grid ${mainView === "settings" ? "border-violet-400/25 bg-violet-500/15 text-violet-200" : "border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white"}`}><Settings size={15} /></button>
             <div className="grid size-9 shrink-0 place-items-center rounded-full bg-violet-500/15 text-xs font-semibold text-violet-200">
               {user.name.slice(0, 1).toUpperCase()}
             </div>
@@ -756,7 +791,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               Cargando workspaces…
             </p>
           ) : null}
-          {!loading && !activeWorkspace ? (
+          {!loading && !activeWorkspace && mainView !== "settings" ? (
             <EmptyWorkspace onCreate={() => setWorkspaceForm(true)} />
           ) : null}
           {activeWorkspace &&
@@ -797,6 +832,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               onRemoveVariable={removeVariable}
             />
           ) : null}
+          {mainView === "settings" ? <SettingsView currentVersion={systemVersion} userId={user.id} workspace={activeWorkspace} onWorkspaceImported={(result) => void workspaceImported(result)} /> : null}
           {error ? (
             <p className="absolute bottom-5 rounded-lg border border-red-400/15 bg-red-400/10 px-3 py-2 text-xs text-red-200">
               {error}
@@ -891,6 +927,8 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
       {folderToDelete ? <SimpleConfirm title="Eliminar carpeta" description={`Se eliminará ${folderToDelete.name} y sus subcarpetas. Las peticiones no se borrarán.`} onCancel={() => setFolderToDelete(null)} onConfirm={deleteFolder} /> : null}
       {requestToMove ? <MoveRequestDialog request={requestToMove} folders={folders} onClose={() => setRequestToMove(null)} onSubmit={moveRequest} /> : null}
       <WhatsNewModal currentVersion={systemVersion} />
+      <UpdateControl currentVersion={systemVersion} variant="headless" />
+      <ThemeRuntime />
     </div>
   );
 }
@@ -917,7 +955,7 @@ function SectionTitle({ label, onAdd, onAddFolder }: { label: string; onAdd: () 
     <div className="flex items-center justify-between px-2 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
       <span>{label}</span>
       <div className="flex items-center gap-1">
-        <button onClick={onAddFolder} title="Nueva carpeta" className="grid size-7 place-items-center rounded-md text-violet-300 hover:bg-violet-400/10" aria-label="Crear carpeta"><FolderKanban size={14} /></button>
+        <button onClick={onAddFolder} title="Nueva carpeta" className="grid size-7 place-items-center rounded-md border border-violet-300/10 bg-violet-500/[0.06] text-violet-300 transition hover:border-violet-300/25 hover:bg-violet-400/15" aria-label="Crear carpeta"><FolderPlus size={14} strokeWidth={1.8} /></button>
         <button onClick={onAdd} title="Nueva petición" className="grid size-7 place-items-center rounded-md text-violet-300 hover:bg-violet-400/10" aria-label={`Crear ${label}`}><Plus size={14} /></button>
       </div>
     </div>
