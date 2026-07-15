@@ -1,6 +1,6 @@
 {
   "name": "flux",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "eslint",
     "release:version": "node scripts/set-version.mjs",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

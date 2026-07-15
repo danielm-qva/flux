@@ -4,6 +4,41 @@ Todos los cambios relevantes de Flux se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto utiliza [versionado semántico](https://semver.org/lang/es/).
 
+## [Unreleased]
+
+## [3.0.0] - 2026-07-15
+
+Tercera versión mayor de Flux, centrada en personalización, portabilidad y una gestión más clara del workspace.
+
+### Añadido
+
+- Vista de Settings con administración de apariencia y actualizaciones.
+- Temas completos Ultravioleta, Cian Ártico y Ámbar Carbono con primary, fondos, superficies, bordes y glow propios.
+- Persistencia local y migración automática de la preferencia de tema.
+- Exportación de workspaces completos al formato versionado `.flux.json`.
+- Importación validada como workspace nuevo mediante una transacción SQLite.
+- Previsualización del contenido antes de importar con conteos de carpetas, peticiones, environments y variables.
+- Opción explícita para incluir secretos durante la exportación.
+
+### Cambiado
+
+- Todas las carpetas y subcarpetas pueden contraerse o expandirse independientemente.
+- Icono de creación de carpetas y menús contextuales rediseñados.
+- Acciones de carpetas y peticiones alineadas con iconos, filas flex y hover temático.
+- El actualizador automático permanece activo en segundo plano y también está disponible dentro de Settings.
+- Tokens, passwords, API keys y headers de autorización se omiten por defecto al exportar.
+
+### Corregido
+
+- Los nombres duplicados de peticiones se validan antes de guardar y ya no generan un error global similar a un crash.
+- Los scripts de Tauri conservan comandos separados para desarrollo y compilación.
+
+### Seguridad
+
+- Los archivos importados tienen un límite de 25 MB y límites internos de recursos.
+- Las referencias de carpetas, versiones del formato y ciclos jerárquicos se validan antes de escribir datos.
+- Una importación fallida revierte completamente la transacción SQLite.
+
 ## [2.0.0] - 2026-07-15
 
 Segunda versión mayor de Flux, centrada en la organización y trazabilidad de las peticiones.
@@ -72,5 +107,6 @@ Primera release estable de Flux para Windows.
 - Verificación criptográfica obligatoria de los paquetes de actualización.
 - Clave privada de actualizaciones excluida del repositorio.
 
+[3.0.0]: https://github.com/danielm-qva/flux/releases/tag/v3.0.0
 [2.0.0]: https://github.com/danielm-qva/flux/releases/tag/v2.0.0
 [1.0.0]: https://github.com/danielm-qva/flux/releases/tag/v1.0.0
