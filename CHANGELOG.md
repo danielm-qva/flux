@@ -44,4 +44,8 @@ Primera release estable de Flux para Windows.
 - Verificación criptográfica obligatoria de los paquetes de actualización.
 - Clave privada de actualizaciones excluida del repositorio.
 
+### Corregido
+
+- Exportación estática de Next.js habilitada para que Tauri encuentre los assets de `out` en entornos limpios de CI.
+
 [1.0.0]: https://github.com/danielm-qva/flux/releases/tag/v1.0.0
