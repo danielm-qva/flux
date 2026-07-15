@@ -9,6 +9,8 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             auth::register_user,
             auth::login_user,
@@ -33,8 +35,22 @@ pub fn run() {
         ])
         .setup(|app| {
             let app_data_dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&app_data_dir)?;
             let database_path = app_data_dir.join("flux.sqlite3");
+
+            // Preserve databases created while the app still used Tauri's
+            // provisional `com.tauri.dev` identifier.
+            if !database_path.exists() {
+                if let Some(app_data_root) = app_data_dir.parent() {
+                    let legacy_database_path =
+                        app_data_root.join("com.tauri.dev").join("flux.sqlite3");
+                    if legacy_database_path.exists() {
+                        std::fs::create_dir_all(&app_data_dir)?;
+                        std::fs::copy(legacy_database_path, &database_path)?;
+                    }
+                }
+            }
+
+            std::fs::create_dir_all(&app_data_dir)?;
             database::initialize(&database_path)?;
             app.manage(database::DatabaseState::new(database_path));
 

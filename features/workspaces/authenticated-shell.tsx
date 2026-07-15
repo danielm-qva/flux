@@ -16,13 +16,13 @@ import {
   MoreVertical,
   Plus,
   Pencil,
-  Settings,
   Trash2,
 } from "lucide-react";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { AuthUser } from "@/features/auth/auth-client";
+import { UpdateControl } from "@/features/updater/update-control";
 import { RequestBuilder } from "@/features/requests/request-builder";
 import {
   savedRequestApi,
@@ -63,8 +63,9 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   const [activeRequestId, setActiveRequestId] = useState("");
   const [pendingRequestDelete, setPendingRequestDelete] =
     useState<SavedRequest | null>(null);
-  const [requestToRename, setRequestToRename] =
-    useState<SavedRequest | null>(null);
+  const [requestToRename, setRequestToRename] = useState<SavedRequest | null>(
+    null,
+  );
   const [deletingRequest, setDeletingRequest] = useState(false);
   const [mainView, setMainView] = useState<MainView>("request");
   const [loading, setLoading] = useState(true);
@@ -315,7 +316,10 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     if (!pendingEnvironmentDelete) return;
     setDeletingEnvironment(true);
     try {
-      await workspaceApi.removeEnvironment(user.id, pendingEnvironmentDelete.id);
+      await workspaceApi.removeEnvironment(
+        user.id,
+        pendingEnvironmentDelete.id,
+      );
       const remaining = environments.filter(
         (environment) => environment.id !== pendingEnvironmentDelete.id,
       );
@@ -376,9 +380,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         String(form.get("name") ?? ""),
       );
       setRequests((items) =>
-        items.map((request) =>
-          request.id === renamed.id ? renamed : request,
-        ),
+        items.map((request) => (request.id === renamed.id ? renamed : request)),
       );
       setRequestToRename(null);
       setError(null);
@@ -536,7 +538,9 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                       <button
                         type="button"
                         onClick={(event) => {
-                          event.currentTarget.closest("details")?.removeAttribute("open");
+                          event.currentTarget
+                            .closest("details")
+                            ?.removeAttribute("open");
                           setRequestToRename(request);
                         }}
                         className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-muted-foreground hover:bg-violet-400/10 hover:text-violet-200"
@@ -546,7 +550,9 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                       <button
                         type="button"
                         onClick={(event) => {
-                          event.currentTarget.closest("details")?.removeAttribute("open");
+                          event.currentTarget
+                            .closest("details")
+                            ?.removeAttribute("open");
                           void duplicateRequest(request);
                         }}
                         className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-muted-foreground hover:bg-violet-400/10 hover:text-violet-200"
@@ -557,7 +563,9 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                       <button
                         type="button"
                         onClick={(event) => {
-                          event.currentTarget.closest("details")?.removeAttribute("open");
+                          event.currentTarget
+                            .closest("details")
+                            ?.removeAttribute("open");
                           setPendingRequestDelete(request);
                         }}
                         className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-rose-300/80 hover:bg-rose-400/10 hover:text-rose-200"
@@ -673,17 +681,14 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                     className={`hidden h-9 shrink-0 items-center gap-2 rounded-lg border px-2.5 text-xs sm:inline-flex 2xl:px-3 ${mainView === "environment" ? "border-violet-400/25 bg-violet-500/15 text-violet-100" : "border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white"}`}
                   >
                     <Pencil size={13} />
-                    <span className="hidden 2xl:inline">Editar environment</span>
+                    <span className="hidden 2xl:inline">
+                      Editar environment
+                    </span>
                   </button>
                 ) : null}
               </>
             ) : null}
-            <button
-              className="hidden size-9 shrink-0 place-items-center rounded-lg border border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white xl:grid"
-              aria-label="Configuración"
-            >
-              <Settings size={15} />
-            </button>
+            <UpdateControl currentVersion={systemVersion} />
             <div className="grid size-9 shrink-0 place-items-center rounded-full bg-violet-500/15 text-xs font-semibold text-violet-200">
               {user.name.slice(0, 1).toUpperCase()}
             </div>
@@ -1453,8 +1458,8 @@ function RequestDeleteDialog({
           Eliminar petición
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          ¿Quieres eliminar <span className="text-white">{request.name}</span> de{" "}
-          <span className="text-white">{workspaceName}</span>?
+          ¿Quieres eliminar <span className="text-white">{request.name}</span>{" "}
+          de <span className="text-white">{workspaceName}</span>?
         </p>
         <p className="mt-2 text-xs text-rose-200/70">
           Se perderán su URL, headers, params, autorización y body guardados.

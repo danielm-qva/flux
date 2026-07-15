@@ -1,0 +1,55 @@
+name: Publish Flux for Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_notes:
+        description: "Notas que verá el usuario en Flux"
+        required: false
+        default: "Esta versión incluye mejoras y correcciones para Flux."
+
+jobs:
+  publish-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify frontend
+        run: |
+          npm run lint
+          npm run build
+
+      - name: Build, sign and publish release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: flux-v__VERSION__
+          releaseName: "Flux v__VERSION__"
+          releaseBody: ${{ inputs.release_notes }}
+          releaseDraft: false
+          prerelease: false
+          args: "--bundles nsis"

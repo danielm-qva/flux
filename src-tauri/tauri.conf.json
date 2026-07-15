@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "flux",
+  "productName": "Flux",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.flux.desktop",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:3000",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "flux",
+        "title": "Flux",
         "width": 800,
         "height": 600,
         "resizable": true,
@@ -26,6 +26,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -35,6 +36,17 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaW5uIHB1YmxpYyBrZXk6IDJCNTlGQTZERENFMUY4NwpSV1NISDg3ZHBwKzFBdkZ3MWlnMmhRUVFkVnZMM2JBWnF1LzZKcmNHcEppTGZDOUxhSkdNT2M0UAo=",
+      "endpoints": [
+        "https://github.com/danielm-qva/flux/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }
