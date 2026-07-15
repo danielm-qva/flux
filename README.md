@@ -361,6 +361,8 @@ flux/
 | `npm run tauri dev`                | Inicia la aplicación desktop en desarrollo   |
 | `npm run tauri build`              | Compila los instaladores de producción       |
 | `npm run release:version -- 0.2.0` | Sincroniza la versión en todos los manifests |
+| `npm run build:web` | Genera `out/` y verifica los assets estáticos requeridos por Tauri |
+| `npm run build:windows` | Genera el frontend y construye el instalador NSIS de Windows |
 
 Validación recomendada antes de subir cambios:
 

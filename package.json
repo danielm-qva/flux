@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run build:web",
+    "build:web": "next build && node scripts/verify-web-assets.mjs",
+    "build:windows": "node scripts/build-windows.mjs",
     "start": "next start",
     "lint": "eslint",
     "release:version": "node scripts/set-version.mjs",

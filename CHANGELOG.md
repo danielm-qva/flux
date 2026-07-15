@@ -25,6 +25,7 @@ Segunda versión mayor de Flux, centrada en la organización y trazabilidad de l
 - Sidebar ampliado y controles para crear carpetas y peticiones alineados.
 - Las carpetas que contienen la petición activa permanecen expandidas.
 - Las respuestas guardadas en el historial se limitan a 1 MB por ejecución.
+- El build de Windows genera y verifica `out/` antes de iniciar la compilación de Tauri.
 
 ### Seguridad
 
