@@ -47,5 +47,6 @@ Primera release estable de Flux para Windows.
 ### Corregido
 
 - Exportación estática de Next.js habilitada para que Tauri encuentre los assets de `out` en entornos limpios de CI.
+- Imágenes locales configuradas sin el optimizador de servidor de Next.js para funcionar dentro del bundle estático de Tauri.
 
 [1.0.0]: https://github.com/danielm-qva/flux/releases/tag/v1.0.0
