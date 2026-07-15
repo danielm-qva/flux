@@ -65,12 +65,14 @@ export function RequestBuilder({
   variables,
   request,
   onSaved,
+  onExecuted,
 }: {
   userId: string;
   workspace: Workspace;
   variables: EnvironmentVariable[];
   request: SavedRequest;
   onSaved: (request: SavedRequest) => void;
+  onExecuted?: (result: { method: string; resolvedUrl: string; response?: HttpResponse; error?: string }) => void;
 }) {
   const [method, setMethod] = useState<HttpMethod>(() =>
     HTTP_METHODS.includes(request.method as HttpMethod)
@@ -212,9 +214,12 @@ export function RequestBuilder({
         timeoutMs: 30_000,
       });
       setResponse(result);
+      onExecuted?.({ method, resolvedUrl, response: result });
     } catch (cause) {
       setResponse(null);
-      setRequestError(String(cause));
+      const message = String(cause);
+      setRequestError(message);
+      onExecuted?.({ method, resolvedUrl, error: message });
     } finally {
       setSending(false);
     }
@@ -306,18 +311,29 @@ export function RequestBuilder({
         <p className="truncate text-[10px] tracking-[0.16em] text-muted-foreground uppercase">
           {request.name} · {workspace.name}
         </p>
-        <button
-          type="button"
-          onClick={() => setCurlImporterOpen(true)}
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border border-white/[0.07] px-2.5 text-[10px] text-muted-foreground hover:border-violet-400/20 hover:bg-violet-400/10 hover:text-violet-200"
-        >
-          <ClipboardPaste size={12} /> Importar cURL
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={saveRequest}
+            disabled={saving}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-violet-400/20 bg-violet-500/[0.07] px-2.5 text-[10px] font-medium text-violet-200 hover:bg-violet-500/15 disabled:cursor-wait disabled:opacity-65"
+          >
+            {saving ? <LoaderCircle size={12} className="animate-spin" /> : <Save size={12} />}
+            {saving ? "Guardando" : "Guardar"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurlImporterOpen(true)}
+            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/[0.07] px-2.5 text-[10px] text-muted-foreground hover:border-violet-400/20 hover:bg-violet-400/10 hover:text-violet-200"
+          >
+            <ClipboardPaste size={12} /> Importar cURL
+          </button>
+        </div>
       </div>
       <div className="mt-3 grid h-[calc(100%-24px)] min-h-0 grid-cols-[minmax(460px,1.08fr)_minmax(380px,0.92fr)] gap-4 max-xl:grid-cols-1 max-xl:grid-rows-[minmax(0,1fr)_minmax(0,0.72fr)] max-lg:gap-2">
         <div className="min-h-0 overflow-y-auto pr-1">
           <div className="rounded-xl border border-white/[0.07] bg-[#120c1e] p-4">
-            <div className="grid grid-cols-[140px_minmax(0,1fr)_96px_105px] gap-2 max-lg:grid-cols-[120px_minmax(0,1fr)_92px_100px] max-sm:grid-cols-[110px_minmax(0,1fr)]">
+            <div className="grid grid-cols-[140px_minmax(0,1fr)_105px] gap-2 max-lg:grid-cols-[120px_minmax(0,1fr)_100px] max-sm:grid-cols-[110px_minmax(0,1fr)]">
               <label className="relative">
                 <span className="mb-1.5 block text-[9px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
                   Método
@@ -358,19 +374,6 @@ export function RequestBuilder({
                   className="h-11 w-full rounded-lg border border-white/[0.08] bg-transparent px-3 font-mono text-xs text-white outline-none placeholder:text-muted-foreground/40 focus:border-violet-400/50"
                 />
               </label>
-              <button
-                type="button"
-                onClick={saveRequest}
-                disabled={saving}
-                className="mt-[21px] flex h-11 items-center justify-center gap-2 rounded-lg border border-violet-400/20 bg-violet-500/[0.07] text-xs font-semibold text-violet-200 hover:bg-violet-500/15 disabled:cursor-wait disabled:opacity-65 max-sm:mt-1"
-              >
-                {saving ? (
-                  <LoaderCircle size={14} className="animate-spin" />
-                ) : (
-                  <Save size={14} />
-                )}
-                {saving ? "Guardando" : "Guardar"}
-              </button>
               <button
                 type="button"
                 onClick={sendRequest}

@@ -4,7 +4,7 @@ Flux es una aplicación de escritorio para diseñar, guardar y ejecutar peticion
 
 La aplicación organiza el trabajo en **workspaces**, cada workspace contiene sus propias **peticiones** y **environments**, y cada environment define variables reutilizables como `{{BASE_URL}}` o `{{TOKEN}}`.
 
-> Estado actual: versión `1.0.0`, orientada principalmente a Windows x64.
+> Estado actual: versión `2.0.0`, orientada principalmente a Windows x64.
 
 ## Contenido
 

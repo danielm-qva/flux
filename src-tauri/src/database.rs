@@ -73,9 +73,27 @@ pub fn initialize(path: &Path) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_environment_variables_environment
             ON environment_variables(environment_id);
 
+        CREATE TABLE IF NOT EXISTS request_folders (
+            id           TEXT PRIMARY KEY NOT NULL,
+            workspace_id TEXT NOT NULL,
+            parent_id    TEXT,
+            name         TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 80),
+            created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+            FOREIGN KEY(parent_id) REFERENCES request_folders(id) ON DELETE CASCADE,
+            UNIQUE(workspace_id, parent_id, name COLLATE NOCASE)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_request_folders_workspace
+            ON request_folders(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_request_folders_parent
+            ON request_folders(parent_id);
+
         CREATE TABLE IF NOT EXISTS saved_requests (
             id           TEXT PRIMARY KEY NOT NULL,
             workspace_id TEXT NOT NULL,
+            folder_id    TEXT,
             name         TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 100),
             method       TEXT NOT NULL DEFAULT 'GET',
             url          TEXT NOT NULL DEFAULT '',
@@ -88,12 +106,52 @@ pub fn initialize(path: &Path) -> Result<()> {
             created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+            FOREIGN KEY(folder_id) REFERENCES request_folders(id) ON DELETE SET NULL,
             UNIQUE(workspace_id, name COLLATE NOCASE)
         );
 
         CREATE INDEX IF NOT EXISTS idx_saved_requests_workspace
             ON saved_requests(workspace_id);
+
+        CREATE TABLE IF NOT EXISTS request_history (
+            id               TEXT PRIMARY KEY NOT NULL,
+            workspace_id     TEXT NOT NULL,
+            request_id       TEXT,
+            request_name     TEXT NOT NULL,
+            method           TEXT NOT NULL,
+            resolved_url     TEXT NOT NULL,
+            status           INTEGER,
+            status_text      TEXT NOT NULL DEFAULT '',
+            duration_ms      INTEGER,
+            size_bytes       INTEGER,
+            response_headers TEXT NOT NULL DEFAULT '[]',
+            response_body    TEXT NOT NULL DEFAULT '',
+            error            TEXT,
+            created_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+            FOREIGN KEY(request_id) REFERENCES saved_requests(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_request_history_workspace_created
+            ON request_history(workspace_id, created_at DESC);
         ",
+    )?;
+
+    let has_folder_id = connection
+        .prepare("PRAGMA table_info(saved_requests)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?
+        .iter()
+        .any(|column| column == "folder_id");
+    if !has_folder_id {
+        connection.execute(
+            "ALTER TABLE saved_requests ADD COLUMN folder_id TEXT REFERENCES request_folders(id) ON DELETE SET NULL",
+            [],
+        )?;
+    }
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_saved_requests_folder ON saved_requests(folder_id)",
+        [],
     )?;
     Ok(())
 }
