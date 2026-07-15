@@ -1,5 +1,6 @@
 mod auth;
 mod database;
+mod organization;
 mod request;
 mod workspace;
 
@@ -21,6 +22,14 @@ pub fn run() {
             request::rename_saved_request,
             request::duplicate_saved_request,
             request::delete_saved_request,
+            request::move_saved_request,
+            organization::list_request_folders,
+            organization::create_request_folder,
+            organization::rename_request_folder,
+            organization::delete_request_folder,
+            organization::list_request_history,
+            organization::record_request_history,
+            organization::clear_request_history,
             workspace::list_workspaces,
             workspace::create_workspace,
             workspace::rename_workspace,

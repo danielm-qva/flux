@@ -9,7 +9,6 @@ import {
   Clock3,
   FileJson2,
   FolderKanban,
-  Globe2,
   KeyRound,
   LogOut,
   Copy,
@@ -23,9 +22,15 @@ import { toast } from "sonner";
 
 import type { AuthUser } from "@/features/auth/auth-client";
 import { UpdateControl } from "@/features/updater/update-control";
+import { WhatsNewModal } from "@/features/updater/whats-new-modal";
 import { RequestBuilder } from "@/features/requests/request-builder";
+import { RequestTree } from "@/features/requests/request-tree";
 import {
+  requestFolderApi,
+  requestHistoryApi,
   savedRequestApi,
+  type RequestFolder,
+  type RequestHistoryEntry,
   type SavedRequest,
 } from "@/features/requests/request-client";
 import {
@@ -60,6 +65,14 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   const [deletingEnvironment, setDeletingEnvironment] = useState(false);
   const [requestForm, setRequestForm] = useState(false);
   const [requests, setRequests] = useState<SavedRequest[]>([]);
+  const [folders, setFolders] = useState<RequestFolder[]>([]);
+  const [folderForm, setFolderForm] = useState<string | null | undefined>();
+  const [folderToRename, setFolderToRename] = useState<RequestFolder | null>(null);
+  const [folderToDelete, setFolderToDelete] = useState<RequestFolder | null>(null);
+  const [requestFolderId, setRequestFolderId] = useState<string | null>(null);
+  const [requestToMove, setRequestToMove] = useState<SavedRequest | null>(null);
+  const [history, setHistory] = useState<RequestHistoryEntry[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [activeRequestId, setActiveRequestId] = useState("");
   const [pendingRequestDelete, setPendingRequestDelete] =
     useState<SavedRequest | null>(null);
@@ -147,6 +160,12 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     return () => {
       active = false;
     };
+  }, [activeWorkspaceId, user.id]);
+
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+    requestFolderApi.list(user.id, activeWorkspaceId).then(setFolders).catch((cause) => setError(String(cause)));
+    requestHistoryApi.list(user.id, activeWorkspaceId).then(setHistory).catch((cause) => setError(String(cause)));
   }, [activeWorkspaceId, user.id]);
 
   useEffect(() => {
@@ -267,10 +286,12 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         user.id,
         activeWorkspace.id,
         String(form.get("name") ?? ""),
+        requestFolderId,
       );
       setRequests((items) => [...items, created]);
       setActiveRequestId(created.id);
       setRequestForm(false);
+      setRequestFolderId(null);
       setMainView("request");
       setError(null);
       toast.success("Petición creada", {
@@ -413,6 +434,27 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     }
   }
 
+  async function createFolder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!activeWorkspace) return;
+    try { const created = await requestFolderApi.create(user.id, activeWorkspace.id, String(new FormData(event.currentTarget).get("name") ?? ""), folderForm ?? null); setFolders((items) => [...items, created]); setFolderForm(undefined); toast.success("Carpeta creada"); } catch (cause) { toast.error("No se pudo crear la carpeta", { description: String(cause) }); }
+  }
+  async function renameFolder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!folderToRename) return;
+    try { const updated = await requestFolderApi.rename(user.id, folderToRename.id, String(new FormData(event.currentTarget).get("name") ?? "")); setFolders((items) => items.map((item) => item.id === updated.id ? updated : item)); setFolderToRename(null); toast.success("Carpeta renombrada"); } catch (cause) { toast.error("No se pudo renombrar", { description: String(cause) }); }
+  }
+  async function deleteFolder() {
+    if (!folderToDelete) return;
+    try { await requestFolderApi.remove(user.id, folderToDelete.id); const removed = new Set([folderToDelete.id]); let found = true; while (found) { found = false; for (const folder of folders) if (folder.parentId && removed.has(folder.parentId) && !removed.has(folder.id)) { removed.add(folder.id); found = true; } } setFolders((items) => items.filter((item) => !removed.has(item.id))); setRequests((items) => items.map((item) => item.folderId && removed.has(item.folderId) ? { ...item, folderId: null } : item)); setFolderToDelete(null); toast.success("Carpeta eliminada", { description: "Las peticiones quedaron en Sin carpeta." }); } catch (cause) { toast.error("No se pudo eliminar", { description: String(cause) }); }
+  }
+  async function moveRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!requestToMove) return; const folderId = String(new FormData(event.currentTarget).get("folderId") ?? "") || null;
+    try { const moved = await savedRequestApi.move(user.id, requestToMove.id, folderId); setRequests((items) => items.map((item) => item.id === moved.id ? moved : item)); setRequestToMove(null); toast.success("Petición movida"); } catch (cause) { toast.error("No se pudo mover", { description: String(cause) }); }
+  }
+  async function recordExecution(result: { method: string; resolvedUrl: string; response?: import("@/features/requests/request-client").HttpResponse; error?: string }) {
+    if (!activeWorkspace || !activeRequest) return;
+    try { const entry = await requestHistoryApi.record({ userId: user.id, workspaceId: activeWorkspace.id, requestId: activeRequest.id, requestName: activeRequest.name, method: result.method, resolvedUrl: result.resolvedUrl, status: result.response?.status ?? null, statusText: result.response?.statusText ?? "", durationMs: result.response?.durationMs ?? null, sizeBytes: result.response?.sizeBytes ?? null, responseHeaders: JSON.stringify(result.response?.headers ?? []), responseBody: result.response?.body ?? "", error: result.error ?? null }); setHistory((items) => [entry, ...items].slice(0, 200)); } catch (cause) { toast.error("No se pudo guardar el historial", { description: String(cause) }); }
+  }
+
   async function saveVariable(
     variableId: string | undefined,
     key: string,
@@ -470,6 +512,8 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
 
   function changeWorkspace(workspaceId: string) {
     setRequests([]);
+    setFolders([]);
+    setHistory([]);
     setActiveRequestId("");
     setActiveWorkspaceId(workspaceId);
     setMainView("request");
@@ -481,7 +525,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   }
 
   return (
-    <div className="grid h-screen min-h-0 grid-cols-[250px_minmax(0,1fr)] overflow-hidden bg-[#0b0715] text-foreground max-md:grid-cols-1">
+    <div className="grid h-screen min-h-0 grid-cols-[290px_minmax(0,1fr)] overflow-hidden bg-[#0b0715] text-foreground max-md:grid-cols-1">
       <aside className="flex h-full min-h-0 flex-col border-r border-white/[0.06] bg-[#0d0818]/95 max-md:hidden">
         <div className="flex h-[70px] items-center gap-3 border-b border-white/[0.06] px-4">
           <Image src="/flux-icon.png" alt="" width={34} height={34} />
@@ -503,10 +547,19 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         </div>
 
         <div className="flex flex-1 flex-col overflow-y-auto p-3">
-          <SectionTitle label="Peticiones" onAdd={() => setRequestForm(true)} />
+          <SectionTitle
+            label="Peticiones"
+            onAdd={() => { setRequestFolderId(null); setRequestForm(true); }}
+            onAddFolder={() => setFolderForm(null)}
+          />
           {activeWorkspace ? (
-            <div ref={requestListRef} className="mt-3 flex flex-1 flex-col">
-              {requests.map((request) => (
+            <div ref={requestListRef} className="flex min-h-0 flex-1 flex-col">
+              <RequestTree folders={folders} requests={requests} activeRequestId={mainView === "request" ? activeRequestId : ""}
+                onSelect={(request) => { setActiveRequestId(request.id); setMainView("request"); }}
+                onNewRequest={(folderId) => { setRequestFolderId(folderId); setRequestForm(true); }}
+                onNewFolder={(parentId) => setFolderForm(parentId)} onRenameFolder={setFolderToRename} onDeleteFolder={setFolderToDelete}
+                onRequestMenu={(request, action) => { if (action === "rename") setRequestToRename(request); else if (action === "duplicate") void duplicateRequest(request); else if (action === "move") setRequestToMove(request); else setPendingRequestDelete(request); }} />
+              {false && requests.map((request) => (
                 <div
                   key={request.id}
                   className={`group flex h-9 w-full items-center rounded-lg border pr-1 ${mainView === "request" && activeRequestId === request.id ? "border-violet-400/15 bg-violet-500/10 text-violet-100" : "border-transparent text-muted-foreground hover:bg-white/[0.035] hover:text-white"}`}
@@ -576,14 +629,14 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                   </details>
                 </div>
               ))}
-              {!requests.length ? (
+              {false && !requests.length ? (
                 <div className="my-auto px-5 py-10 text-center">
                   <FileJson2
                     size={22}
                     className="mx-auto text-muted-foreground/45"
                   />
                   <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                    No hay peticiones guardadas en {activeWorkspace.name}.
+                    No hay peticiones guardadas en {activeWorkspace?.name}.
                   </p>
                   <button
                     type="button"
@@ -603,8 +656,8 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         </div>
 
         <div className="border-t border-white/[0.06] p-3">
-          <button className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-white/[0.035] hover:text-white">
-            <Clock3 size={14} /> Historial
+          <button onClick={() => setHistoryOpen((value) => !value)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-white/[0.035] hover:text-white">
+            <Clock3 size={14} /> Historial <span className="ml-auto text-[9px] opacity-60">{history.length}</span>
           </button>
           <button
             onClick={onLogout}
@@ -706,31 +759,24 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
           {!loading && !activeWorkspace ? (
             <EmptyWorkspace onCreate={() => setWorkspaceForm(true)} />
           ) : null}
-          {!loading && activeWorkspace && !activeEnvironment ? (
-            <EmptyEnvironment
-              workspace={activeWorkspace}
-              onCreate={() => setEnvironmentForm(true)}
-            />
-          ) : null}
           {activeWorkspace &&
-          activeEnvironment &&
           activeRequest &&
           mainView === "request" ? (
             <RequestBuilder
               key={activeRequest.id}
               userId={user.id}
               workspace={activeWorkspace}
-              variables={variables}
+              variables={activeEnvironment ? variables : []}
               request={activeRequest}
               onSaved={(saved) =>
                 setRequests((items) =>
                   items.map((item) => (item.id === saved.id ? saved : item)),
                 )
               }
+              onExecuted={(result) => void recordExecution(result)}
             />
           ) : null}
           {activeWorkspace &&
-          activeEnvironment &&
           !activeRequest &&
           mainView === "request" ? (
             <EmptyRequest
@@ -756,6 +802,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               {error}
             </p>
           ) : null}
+          {historyOpen && activeWorkspace ? <HistoryDrawer history={history} onClose={() => setHistoryOpen(false)} onClear={async () => { await requestHistoryApi.clear(user.id, activeWorkspace.id); setHistory([]); }} /> : null}
         </main>
       </div>
 
@@ -839,21 +886,40 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
           onSubmit={renameRequest}
         />
       ) : null}
+      {folderForm !== undefined ? <NameDialog title={folderForm ? "Nueva subcarpeta" : "Nueva carpeta"} label="Nombre de la carpeta" onClose={() => setFolderForm(undefined)} onSubmit={createFolder} /> : null}
+      {folderToRename ? <NameDialog title="Renombrar carpeta" label="Nuevo nombre" defaultValue={folderToRename.name} submitLabel="Guardar cambios" onClose={() => setFolderToRename(null)} onSubmit={renameFolder} /> : null}
+      {folderToDelete ? <SimpleConfirm title="Eliminar carpeta" description={`Se eliminará ${folderToDelete.name} y sus subcarpetas. Las peticiones no se borrarán.`} onCancel={() => setFolderToDelete(null)} onConfirm={deleteFolder} /> : null}
+      {requestToMove ? <MoveRequestDialog request={requestToMove} folders={folders} onClose={() => setRequestToMove(null)} onSubmit={moveRequest} /> : null}
+      <WhatsNewModal currentVersion={systemVersion} />
     </div>
   );
 }
 
-function SectionTitle({ label, onAdd }: { label: string; onAdd: () => void }) {
+function SimpleConfirm({ title, description, onCancel, onConfirm }: { title: string; description: string; onCancel: () => void; onConfirm: () => void }) {
+  return <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-4"><div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#151021] p-5"><h2 className="font-semibold text-white">{title}</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p><div className="mt-5 flex justify-end gap-2"><button onClick={onCancel} className="rounded-lg px-4 py-2 text-xs text-muted-foreground">Cancelar</button><button onClick={onConfirm} className="rounded-lg bg-rose-500/15 px-4 py-2 text-xs text-rose-200">Eliminar</button></div></div></div>;
+}
+
+function HistoryDrawer({ history, onClose, onClear }: { history: RequestHistoryEntry[]; onClose: () => void; onClear: () => Promise<void> }) {
+  const [selected, setSelected] = useState<RequestHistoryEntry | null>(history[0] ?? null);
+  return <section className="absolute inset-x-0 bottom-0 z-40 flex h-[48%] min-h-72 flex-col border-t border-violet-400/20 bg-[#0d0818]/[0.98] shadow-[0_-24px_70px_rgba(0,0,0,.45)] backdrop-blur-xl">
+    <header className="flex h-11 shrink-0 items-center border-b border-white/[0.07] px-4"><Clock3 size={14} className="text-violet-300"/><h2 className="ml-2 text-xs font-semibold text-white">Historial de ejecuciones</h2><span className="ml-2 text-[9px] text-muted-foreground">últimas 200</span><button onClick={() => void onClear()} className="ml-auto text-[10px] text-rose-300/70 hover:text-rose-200">Limpiar</button><button onClick={onClose} className="ml-4 text-xs text-muted-foreground">Cerrar</button></header>
+    <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)]"><div className="overflow-y-auto border-r border-white/[0.07] p-2">{history.map((entry) => <button key={entry.id} onClick={() => setSelected(entry)} className={`mb-1 flex w-full items-start gap-2 rounded-lg p-2 text-left ${selected?.id === entry.id ? "bg-violet-500/12" : "hover:bg-white/[0.035]"}`}><span className="w-12 font-mono text-[9px] font-bold text-violet-300">{entry.method}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs text-white/85">{entry.requestName}</span><span className="block truncate text-[9px] text-muted-foreground">{entry.status ?? "ERR"} · {entry.durationMs ?? "—"} ms · {entry.createdAt}</span></span></button>)}{!history.length ? <p className="p-6 text-center text-xs text-muted-foreground">Envía una petición y aparecerá aquí.</p> : null}</div>
+      <div className="min-w-0 overflow-auto p-4">{selected ? <><div className="flex flex-wrap items-center gap-3"><span className={selected.error ? "text-rose-300" : "text-emerald-300"}>{selected.status ?? "Error"}</span><span className="font-mono text-[10px] text-muted-foreground">{selected.durationMs ?? "—"} ms · {selected.sizeBytes ?? 0} B</span></div><p className="mt-2 break-all font-mono text-[10px] text-violet-200/75">{selected.resolvedUrl}</p><pre className="mt-4 min-h-32 whitespace-pre-wrap break-words rounded-xl border border-white/[0.06] bg-black/20 p-4 font-mono text-[11px] leading-5 text-slate-300">{selected.error ?? (selected.responseBody || "Respuesta vacía")}</pre></> : null}</div></div>
+  </section>;
+}
+
+function MoveRequestDialog({ request, folders, onClose, onSubmit }: { request: SavedRequest; folders: RequestFolder[]; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-4"><form onSubmit={onSubmit} className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#151021] p-5"><h2 className="font-semibold text-white">Mover {request.name}</h2><select name="folderId" defaultValue={request.folderId ?? ""} className="mt-4 h-10 w-full rounded-lg border border-white/10 bg-[#0d0818] px-3 text-sm"><option value="">Sin carpeta</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-xs text-muted-foreground">Cancelar</button><button className="rounded-lg bg-violet-600 px-4 py-2 text-xs text-white">Mover</button></div></form></div>;
+}
+
+function SectionTitle({ label, onAdd, onAddFolder }: { label: string; onAdd: () => void; onAddFolder: () => void }) {
   return (
     <div className="flex items-center justify-between px-2 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
       <span>{label}</span>
-      <button
-        onClick={onAdd}
-        className="grid size-7 place-items-center rounded-md text-violet-300 hover:bg-violet-400/10"
-        aria-label={`Crear ${label}`}
-      >
-        <Plus size={14} />
-      </button>
+      <div className="flex items-center gap-1">
+        <button onClick={onAddFolder} title="Nueva carpeta" className="grid size-7 place-items-center rounded-md text-violet-300 hover:bg-violet-400/10" aria-label="Crear carpeta"><FolderKanban size={14} /></button>
+        <button onClick={onAdd} title="Nueva petición" className="grid size-7 place-items-center rounded-md text-violet-300 hover:bg-violet-400/10" aria-label={`Crear ${label}`}><Plus size={14} /></button>
+      </div>
     </div>
   );
 }
@@ -940,33 +1006,6 @@ function EmptyWorkspace({ onCreate }: { onCreate: () => void }) {
         className="mt-7 inline-flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-500"
       >
         <Plus size={15} /> Crear workspace
-      </button>
-    </section>
-  );
-}
-
-function EmptyEnvironment({
-  workspace,
-  onCreate,
-}: {
-  workspace: Workspace;
-  onCreate: () => void;
-}) {
-  return (
-    <section className="max-w-md text-center">
-      <Globe2 className="mx-auto text-violet-300" size={34} />
-      <h1 className="mt-5 font-sans text-2xl font-semibold text-white">
-        Añade un environment
-      </h1>
-      <p className="mt-3 text-sm leading-6 text-muted-foreground">
-        {workspace.name} todavía no tiene entornos. Crea Development, Staging o
-        Production.
-      </p>
-      <button
-        onClick={onCreate}
-        className="mt-6 inline-flex h-10 items-center gap-2 rounded-xl border border-violet-300/20 bg-violet-500/10 px-4 text-sm text-violet-100 hover:bg-violet-500/15"
-      >
-        <Plus size={15} /> Crear environment
       </button>
     </section>
   );

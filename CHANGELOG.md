@@ -4,6 +4,33 @@ Todos los cambios relevantes de Flux se documentan en este archivo.
 
 El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y el proyecto utiliza [versionado semántico](https://semver.org/lang/es/).
 
+## [2.0.0] - 2026-07-15
+
+Segunda versión mayor de Flux, centrada en la organización y trazabilidad de las peticiones.
+
+### Añadido
+
+- Carpetas y subcarpetas persistentes para organizar peticiones por workspace.
+- Creación directa de peticiones dentro de una carpeta.
+- Movimiento de peticiones entre carpetas o hacia la sección `Sin carpeta`.
+- Historial persistente de hasta 200 ejecuciones recientes por workspace.
+- Detalle histórico de método, URL resuelta, status, duración, tamaño, respuesta y errores.
+- Bandeja inferior de historial que conserva visible el editor actual.
+- Modal de novedades mostrado una vez después de instalar cada nueva versión.
+- Botón de guardado junto a la importación de cURL.
+
+### Cambiado
+
+- Los environments ahora son opcionales y ya no bloquean el editor de peticiones.
+- Sidebar ampliado y controles para crear carpetas y peticiones alineados.
+- Las carpetas que contienen la petición activa permanecen expandidas.
+- Las respuestas guardadas en el historial se limitan a 1 MB por ejecución.
+
+### Seguridad
+
+- Validación en Rust de que las carpetas y peticiones pertenecen al workspace del usuario.
+- Eliminación en cascada de carpetas sin eliminar las peticiones que contenían.
+
 ## [1.0.0] - 2026-07-15
 
 Primera release estable de Flux para Windows.
@@ -44,4 +71,5 @@ Primera release estable de Flux para Windows.
 - Verificación criptográfica obligatoria de los paquetes de actualización.
 - Clave privada de actualizaciones excluida del repositorio.
 
+[2.0.0]: https://github.com/danielm-qva/flux/releases/tag/v2.0.0
 [1.0.0]: https://github.com/danielm-qva/flux/releases/tag/v1.0.0

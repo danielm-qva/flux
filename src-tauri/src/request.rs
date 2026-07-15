@@ -15,6 +15,7 @@ const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
 pub struct SavedRequest {
     id: String,
     workspace_id: String,
+    folder_id: Option<String>,
     name: String,
     method: String,
     url: String,
@@ -41,6 +42,7 @@ pub struct CreateSavedRequestInput {
     user_id: String,
     workspace_id: String,
     name: String,
+    folder_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,6 +50,14 @@ pub struct CreateSavedRequestInput {
 pub struct SavedRequestScope {
     user_id: String,
     request_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveSavedRequestInput {
+    user_id: String,
+    request_id: String,
+    folder_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -82,7 +92,7 @@ pub fn list_saved_requests(
     let connection = state.connect().map_err(database_error)?;
     let mut statement = connection
         .prepare(
-            "SELECT r.id, r.workspace_id, r.name, r.method, r.url, r.params_json,
+            "SELECT r.id, r.workspace_id, r.folder_id, r.name, r.method, r.url, r.params_json,
                     r.headers_json, r.auth_type, r.auth_json, r.body_type, r.body,
                     r.created_at, r.updated_at
              FROM saved_requests r
@@ -121,18 +131,32 @@ pub fn create_saved_request(
     if !owns_workspace {
         return Err("El workspace no existe o no pertenece a este usuario.".to_string());
     }
+    if let Some(folder_id) = &input.folder_id {
+        let belongs = connection
+            .query_row(
+                "SELECT 1 FROM request_folders WHERE id = ?1 AND workspace_id = ?2",
+                params![folder_id, input.workspace_id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map_err(database_error)?
+            .is_some();
+        if !belongs {
+            return Err("La carpeta no pertenece a este workspace.".to_string());
+        }
+    }
 
     let id = Uuid::new_v4().to_string();
     connection
         .execute(
             "INSERT INTO saved_requests
-             (id, workspace_id, name, method, url, params_json, headers_json, auth_type, auth_json, body_type, body)
-             VALUES (?1, ?2, ?3, 'GET', '',
+             (id, workspace_id, folder_id, name, method, url, params_json, headers_json, auth_type, auth_json, body_type, body)
+             VALUES (?1, ?2, ?3, ?4, 'GET', '',
                      '[{\"id\":\"param-1\",\"enabled\":true,\"key\":\"\",\"value\":\"\"}]',
                      '[{\"id\":\"header-1\",\"enabled\":true,\"key\":\"Content-Type\",\"value\":\"application/json\"}]',
                      'none', '{\"token\":\"\",\"username\":\"\",\"password\":\"\",\"apiKeyName\":\"X-API-Key\",\"apiKeyValue\":\"\"}',
                      'json', '{\n  \"message\": \"Hello from Flux\"\n}')",
-            params![id, input.workspace_id, name],
+            params![id, input.workspace_id, input.folder_id, name],
         )
         .map_err(database_error)?;
     find_saved_request(&connection, &id, &input.user_id)
@@ -228,9 +252,9 @@ pub fn duplicate_saved_request(
     connection
         .execute(
             "INSERT INTO saved_requests
-             (id, workspace_id, name, method, url, params_json, headers_json,
+             (id, workspace_id, folder_id, name, method, url, params_json, headers_json,
               auth_type, auth_json, body_type, body)
-             SELECT ?1, workspace_id, ?2, method, url, params_json, headers_json,
+             SELECT ?1, workspace_id, folder_id, ?2, method, url, params_json, headers_json,
                     auth_type, auth_json, body_type, body
              FROM saved_requests WHERE id = ?3",
             params![id, candidate, input.request_id],
@@ -258,6 +282,25 @@ pub fn delete_saved_request(
     Ok(())
 }
 
+#[tauri::command]
+pub fn move_saved_request(
+    state: State<'_, DatabaseState>,
+    input: MoveSavedRequestInput,
+) -> Result<SavedRequest, String> {
+    let connection = state.connect().map_err(database_error)?;
+    let changed = connection.execute(
+        "UPDATE saved_requests SET folder_id = ?1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?2
+           AND workspace_id IN (SELECT id FROM workspaces WHERE user_id = ?3)
+           AND (?1 IS NULL OR ?1 IN (SELECT id FROM request_folders WHERE workspace_id = saved_requests.workspace_id))",
+        params![input.folder_id, input.request_id, input.user_id],
+    ).map_err(database_error)?;
+    if changed == 0 {
+        return Err("No se pudo mover la petición a esa carpeta.".to_string());
+    }
+    find_saved_request(&connection, &input.request_id, &input.user_id)
+}
+
 fn find_saved_request(
     connection: &rusqlite::Connection,
     request_id: &str,
@@ -265,7 +308,7 @@ fn find_saved_request(
 ) -> Result<SavedRequest, String> {
     connection
         .query_row(
-            "SELECT r.id, r.workspace_id, r.name, r.method, r.url, r.params_json,
+            "SELECT r.id, r.workspace_id, r.folder_id, r.name, r.method, r.url, r.params_json,
                     r.headers_json, r.auth_type, r.auth_json, r.body_type, r.body,
                     r.created_at, r.updated_at
              FROM saved_requests r JOIN workspaces w ON w.id = r.workspace_id
@@ -280,17 +323,18 @@ fn map_saved_request(row: &Row<'_>) -> rusqlite::Result<SavedRequest> {
     Ok(SavedRequest {
         id: row.get(0)?,
         workspace_id: row.get(1)?,
-        name: row.get(2)?,
-        method: row.get(3)?,
-        url: row.get(4)?,
-        params_json: row.get(5)?,
-        headers_json: row.get(6)?,
-        auth_type: row.get(7)?,
-        auth_json: row.get(8)?,
-        body_type: row.get(9)?,
-        body: row.get(10)?,
-        created_at: row.get(11)?,
-        updated_at: row.get(12)?,
+        folder_id: row.get(2)?,
+        name: row.get(3)?,
+        method: row.get(4)?,
+        url: row.get(5)?,
+        params_json: row.get(6)?,
+        headers_json: row.get(7)?,
+        auth_type: row.get(8)?,
+        auth_json: row.get(9)?,
+        body_type: row.get(10)?,
+        body: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
     })
 }
 
