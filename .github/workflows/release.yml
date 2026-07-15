@@ -1,6 +1,9 @@
 name: Publish Flux for Windows
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       release_notes:
@@ -47,9 +50,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: flux-v__VERSION__
+          tagName: v__VERSION__
           releaseName: "Flux v__VERSION__"
-          releaseBody: ${{ inputs.release_notes }}
+          releaseBody: ${{ inputs.release_notes || 'Consulta CHANGELOG.md para conocer todos los cambios de esta versión.' }}
           releaseDraft: false
           prerelease: false
           args: "--bundles nsis"

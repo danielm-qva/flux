@@ -4,14 +4,13 @@ Flux es una aplicación de escritorio para diseñar, guardar y ejecutar peticion
 
 La aplicación organiza el trabajo en **workspaces**, cada workspace contiene sus propias **peticiones** y **environments**, y cada environment define variables reutilizables como `{{BASE_URL}}` o `{{TOKEN}}`.
 
-> Estado actual: versión `0.1.0`, orientada principalmente a Windows x64.
+> Estado actual: versión `1.0.0`, orientada principalmente a Windows x64.
 
 ## Contenido
 
 - [Características](#características)
 - [Cómo funciona el sistema](#cómo-funciona-el-sistema)
 - [Arquitectura](#arquitectura)
-- [Modelo de datos](#modelo-de-datos)
 - [Tecnologías](#tecnologías)
 - [Requisitos de desarrollo](#requisitos-de-desarrollo)
 - [Instalación y ejecución](#instalación-y-ejecución)
@@ -245,54 +244,6 @@ Los archivos cliente del frontend encapsulan las llamadas a Rust:
 
 Esto evita que los componentes visuales conozcan detalles del comando Rust o del formato interno de SQLite.
 
-## Modelo de datos
-
-```mermaid
-erDiagram
-    USERS ||--o{ WORKSPACES : owns
-    WORKSPACES ||--o{ ENVIRONMENTS : contains
-    WORKSPACES ||--o{ SAVED_REQUESTS : contains
-    ENVIRONMENTS ||--o{ ENVIRONMENT_VARIABLES : defines
-
-    USERS {
-      string id PK
-      string name
-      string email UK
-      string password_hash
-    }
-    WORKSPACES {
-      string id PK
-      string user_id FK
-      string name
-    }
-    ENVIRONMENTS {
-      string id PK
-      string workspace_id FK
-      string name
-      string color
-    }
-    ENVIRONMENT_VARIABLES {
-      string id PK
-      string environment_id FK
-      string key
-      string value
-    }
-    SAVED_REQUESTS {
-      string id PK
-      string workspace_id FK
-      string name
-      string method
-      string url
-      string params_json
-      string headers_json
-      string auth_json
-      string body_type
-      string body
-    }
-```
-
-Las relaciones utilizan claves foráneas y `ON DELETE CASCADE`. El backend también verifica la propiedad del workspace antes de leer o modificar recursos.
-
 ## Tecnologías
 
 | Área                     | Tecnología                      |
@@ -465,7 +416,3 @@ La base no forma parte del instalador, por lo que los datos sobreviven a una act
 - Los paquetes de actualización se validan mediante la firma de Tauri.
 - Para distribución pública en Windows se recomienda añadir además firma Authenticode para reducir advertencias de SmartScreen.
 - Los cambios futuros del esquema SQLite deben incluir migraciones compatibles con instalaciones existentes.
-
-## Licencia
-
-El proyecto todavía no declara una licencia. Añade un archivo `LICENSE` antes de distribuirlo públicamente o aceptar contribuciones externas.
