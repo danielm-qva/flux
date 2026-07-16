@@ -5,7 +5,7 @@ export type ParsedCurl = {
   url: string;
   headers: CurlHeader[];
   body: string;
-  bodyType: "none" | "json" | "text" | "form";
+  bodyType: "none" | "raw:json" | "raw:text" | "urlencoded";
   auth:
     | { type: "none" }
     | { type: "bearer"; token: string }
@@ -72,10 +72,10 @@ export function parseCurlCommand(source: string): ParsedCurl {
     else if (token.startsWith("--data=")) bodyParts.push(token.slice(7));
     else if (token === "--data-urlencode") {
       bodyParts.push(takeValue());
-      bodyTypeHint = "form";
+      bodyTypeHint = "urlencoded";
     } else if (token === "--json") {
       bodyParts.push(takeValue());
-      bodyTypeHint = "json";
+      bodyTypeHint = "raw:json";
       ensureHeader(headers, "Content-Type", "application/json");
       ensureHeader(headers, "Accept", "application/json");
     } else if (token === "-u" || token === "--user")
@@ -94,18 +94,18 @@ export function parseCurlCommand(source: string): ParsedCurl {
     throw new Error("La URL del comando debe usar HTTP o HTTPS.");
   }
 
-  const body = bodyParts.join(bodyTypeHint === "form" ? "&" : "");
+  const rawBody = bodyParts.join(bodyTypeHint === "urlencoded" ? "&" : "");
   const contentType = headers
     .find((header) => header.name.toLowerCase() === "content-type")
     ?.value.toLowerCase();
-  const bodyType = !body
+  const bodyType = !rawBody
     ? "none"
     : (bodyTypeHint ??
       (contentType?.includes("json")
-        ? "json"
+        ? "raw:json"
         : contentType?.includes("application/x-www-form-urlencoded")
-          ? "form"
-          : "text"));
+          ? "urlencoded"
+          : "raw:text"));
 
   const authorization = headers.find(
     (header) => header.name.toLowerCase() === "authorization",
@@ -123,8 +123,30 @@ export function parseCurlCommand(source: string): ParsedCurl {
     };
   }
 
+  const body =
+    bodyType === "urlencoded"
+      ? JSON.stringify(
+          rawBody
+            .split("&")
+            .filter(Boolean)
+            .map((part, index) => {
+              const separator = part.indexOf("=");
+              return {
+                id: `curl-form-${index}`,
+                enabled: true,
+                key: decodeURIComponent(
+                  separator < 0 ? part : part.slice(0, separator),
+                ),
+                value: decodeURIComponent(
+                  separator < 0 ? "" : part.slice(separator + 1),
+                ),
+              };
+            }),
+        )
+      : rawBody;
+
   return {
-    method: (method || (body ? "POST" : "GET")).toUpperCase(),
+    method: (method || (rawBody ? "POST" : "GET")).toUpperCase(),
     url,
     headers,
     body,

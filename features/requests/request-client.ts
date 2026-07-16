@@ -98,6 +98,7 @@ export function executeHttpRequest(input: {
   method: string;
   url: string;
   headers: HttpHeader[];
+  bodyType: string;
   body?: string;
   timeoutMs?: number;
 }) {

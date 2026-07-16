@@ -1,16 +1,20 @@
 "use client";
 
 import {
+  AlertCircle,
+  Braces,
   Check,
   ChevronDown,
   CirclePlus,
   ClipboardPaste,
   Copy,
+  FileUp,
   LoaderCircle,
   Save,
   Send,
   Trash2,
 } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { FormEvent, useState } from "react";
 import { toast } from "sonner";
 
@@ -41,6 +45,7 @@ const HTTP_METHODS = [
 type HttpMethod = (typeof HTTP_METHODS)[number];
 type Tab = "params" | "headers" | "auth" | "body";
 type Pair = { id: string; enabled: boolean; key: string; value: string };
+type BodyField = Pair & { kind: "text" | "file" };
 type AuthState = {
   token: string;
   username: string;
@@ -106,8 +111,12 @@ export function RequestBuilder({
       apiKeyValue: "",
     }),
   );
-  const [bodyType, setBodyType] = useState(request.bodyType);
-  const [body, setBody] = useState(request.body);
+  const [bodyType, setBodyType] = useState(() =>
+    normalizeBodyType(request.bodyType),
+  );
+  const [body, setBody] = useState(() =>
+    normalizeBodyValue(request.bodyType, request.body),
+  );
   const [response, setResponse] = useState<HttpResponse | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -186,13 +195,24 @@ export function RequestBuilder({
           name: item.key.trim(),
           value: resolveEnvironmentVariables(item.value, variables),
         }));
-      const contentType = requestHeaders.find(
+      let contentType = requestHeaders.find(
         (header) => header.name.toLowerCase() === "content-type",
       );
-      if (contentType?.value === "application/json" && bodyType === "text")
-        contentType.value = "text/plain";
-      if (contentType?.value === "application/json" && bodyType === "form")
-        contentType.value = "application/x-www-form-urlencoded";
+      const expectedContentType = contentTypeForBody(bodyType);
+      if (bodyType === "form-data") {
+        const filtered = requestHeaders.filter(
+          (header) => header.name.toLowerCase() !== "content-type",
+        );
+        requestHeaders.splice(0, requestHeaders.length, ...filtered);
+        contentType = undefined;
+      } else if (expectedContentType) {
+        if (contentType) contentType.value = expectedContentType;
+        else
+          requestHeaders.push({
+            name: "Content-Type",
+            value: expectedContentType,
+          });
+      }
       if (authType === "basic")
         requestHeaders.push({
           name: "Authorization",
@@ -207,6 +227,7 @@ export function RequestBuilder({
         method,
         url: resolvedUrl,
         headers: requestHeaders,
+        bodyType,
         body:
           bodyType === "none"
             ? undefined
@@ -462,7 +483,6 @@ export function RequestBuilder({
                 onTypeChange={setBodyType}
                 value={body}
                 onChange={setBody}
-                variables={variables}
               />
             ) : null}
           </div>
@@ -723,49 +743,193 @@ function BodyEditor({
   onTypeChange,
   value,
   onChange,
-  variables,
 }: {
   type: string;
   onTypeChange: (type: string) => void;
   value: string;
   onChange: (value: string) => void;
-  variables: EnvironmentVariable[];
 }) {
+  const mainType = type.startsWith("raw:") ? "raw" : type;
+  const rawType = type.startsWith("raw:") ? type.slice(4) : "json";
+
+  function changeMainType(next: string) {
+    onTypeChange(next === "raw" ? "raw:json" : next);
+    if (next === "form-data" && !isJsonArray(value))
+      onChange(JSON.stringify([emptyBodyField("text")]));
+    if (next === "urlencoded" && !isJsonArray(value))
+      onChange(JSON.stringify([emptyPair("body-param")]));
+    if (next === "graphql" && !isGraphqlBody(value))
+      onChange(JSON.stringify({ query: "", variables: "{}" }));
+  }
+
+  const jsonValidity =
+    mainType === "raw" && rawType === "json" ? validateJson(value) : null;
+  const canFormat =
+    rawType === "json" || rawType === "xml" || rawType === "html";
+
+  function formatBody() {
+    const formatted =
+      rawType === "json" ? formatJson(value) : formatMarkup(value);
+    if (formatted != null && formatted !== value) onChange(formatted);
+  }
+
   return (
     <div>
-      <div className="flex gap-1 border-b border-white/[0.045] px-5 py-3">
-        {[
-          ["none", "Ninguno"],
-          ["json", "JSON"],
-          ["text", "Text"],
-          ["form", "Form URL Encoded"],
-        ].map(([id, label]) => (
-          <button
+      <div className="flex min-h-14 flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/[0.045] px-5 py-3">
+        {BODY_TYPES.map(([id, label]) => (
+          <label
             key={id}
-            type="button"
-            onClick={() => onTypeChange(id)}
-            className={`h-8 rounded-md px-3 text-[10px] ${type === id ? "bg-violet-600 text-white" : "text-muted-foreground hover:bg-white/5 hover:text-white"}`}
+            className={`flex cursor-pointer items-center gap-1.5 text-[10px] transition-colors ${mainType === id ? "text-white" : "text-muted-foreground hover:text-violet-200"}`}
           >
+            <input
+              type="radio"
+              name="body-type"
+              value={id}
+              checked={mainType === id}
+              onChange={() => changeMainType(id)}
+              className="size-3 accent-violet-500"
+            />
             {label}
-          </button>
+          </label>
         ))}
+        {mainType === "raw" ? (
+          <div className="ml-auto flex items-center gap-2">
+            {jsonValidity ? (
+              jsonValidity.valid ? (
+                <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-400">
+                  <Check size={12} /> JSON válido
+                </span>
+              ) : (
+                <span
+                  title={jsonValidity.error}
+                  className="flex items-center gap-1 text-[10px] font-medium text-red-400"
+                >
+                  <AlertCircle size={12} /> JSON inválido
+                </span>
+              )
+            ) : null}
+            {canFormat ? (
+              <button
+                type="button"
+                onClick={formatBody}
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 text-[10px] font-medium text-violet-100 outline-none transition-colors hover:bg-violet-500/20"
+              >
+                <Braces size={12} /> Formatear
+              </button>
+            ) : null}
+            <label className="relative">
+              <select
+                value={rawType}
+                onChange={(event) => onTypeChange(`raw:${event.target.value}`)}
+                className="h-8 appearance-none rounded-lg border border-violet-500/30 bg-violet-500/15 px-3 pr-8 text-[10px] font-medium text-violet-100 outline-none hover:bg-violet-500/25"
+              >
+                <option className="bg-[#1a1030] text-violet-100" value="json">JSON</option>
+                <option className="bg-[#1a1030] text-violet-100" value="text">Text</option>
+                <option className="bg-[#1a1030] text-violet-100" value="xml">XML</option>
+                <option className="bg-[#1a1030] text-violet-100" value="html">HTML</option>
+              </select>
+              <ChevronDown
+                size={12}
+                className="pointer-events-none absolute top-2.5 right-2.5 text-violet-300"
+              />
+            </label>
+          </div>
+        ) : null}
       </div>
       {type === "none" ? (
         <p className="py-24 text-center text-xs text-muted-foreground">
           Esta petición no enviará body.
         </p>
+      ) : type === "form-data" ? (
+        <BodyFieldsEditor value={value} onChange={onChange} />
+      ) : type === "urlencoded" ? (
+        <BodyPairsEditor value={value} onChange={onChange} />
+      ) : type === "binary" ? (
+        <BinaryBodyEditor value={value} onChange={onChange} />
+      ) : type === "graphql" ? (
+        <GraphqlBodyEditor value={value} onChange={onChange} />
       ) : (
-        <EnvironmentAutocomplete
+        <textarea
           value={value}
-          onChange={onChange}
-          variables={variables}
-          multiline
-          ariaLabel="Body de la petición"
+          onChange={(event) => onChange(event.target.value)}
+          aria-label="Body de la petición"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           className="min-h-[290px] w-full resize-none bg-[#10091c] p-5 font-mono text-xs leading-6 text-violet-100 outline-none"
         />
       )}
     </div>
   );
+}
+
+const BODY_TYPES = [
+  ["none", "none"],
+  ["form-data", "form-data"],
+  ["urlencoded", "x-www-form-urlencoded"],
+  ["raw", "raw"],
+  ["binary", "binary"],
+  ["graphql", "GraphQL"],
+] as const;
+
+function BodyFieldsEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const rows = parseSavedValue<BodyField[]>(value, [emptyBodyField("text")]);
+  const update = (next: BodyField[]) => onChange(JSON.stringify(next));
+  const patch = (id: string, values: Partial<BodyField>) =>
+    update(rows.map((row) => (row.id === id ? { ...row, ...values } : row)));
+  return (
+    <div>
+      <BodyTableHeader onAdd={() => update([...rows, emptyBodyField("text")])} />
+      {rows.map((row) => (
+        <div
+          key={row.id}
+          className="grid grid-cols-[32px_88px_minmax(120px,.8fr)_minmax(180px,1.2fr)_42px] items-center border-b border-white/[0.04] px-4 py-2"
+        >
+          <input type="checkbox" checked={row.enabled} onChange={(event) => patch(row.id, { enabled: event.target.checked })} className="accent-violet-500" aria-label="Activar campo" />
+          <select value={row.kind} onChange={(event) => patch(row.id, { kind: event.target.value as BodyField["kind"], value: "" })} className="h-8 bg-transparent text-[10px] text-violet-200 outline-none"><option value="text">Text</option><option value="file">File</option></select>
+          <input value={row.key} onChange={(event) => patch(row.id, { key: event.target.value })} placeholder="clave" autoComplete="off" className="h-9 border-r border-white/[0.05] bg-transparent px-3 font-mono text-xs text-violet-100 outline-none" />
+          {row.kind === "file" ? (
+            <button type="button" onClick={async () => { const path = await chooseBodyFile(); if (path) patch(row.id, { value: path }); }} className="flex h-9 min-w-0 items-center gap-2 truncate px-3 text-left font-mono text-[10px] text-muted-foreground hover:text-violet-200"><FileUp size={13} className="shrink-0" /><span className="truncate">{fileName(row.value) || "Elegir archivo"}</span></button>
+          ) : (
+            <input value={row.value} onChange={(event) => patch(row.id, { value: event.target.value })} placeholder="valor" autoComplete="off" spellCheck={false} className="h-9 min-w-0 bg-transparent px-3 font-mono text-xs text-white outline-none" />
+          )}
+          <RemoveBodyRow onClick={() => update(removeOrReset(rows, row.id, () => emptyBodyField("text")))} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BodyPairsEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const rows = parseSavedValue<Pair[]>(value, [emptyPair("body-param")]);
+  const update = (next: Pair[]) => onChange(JSON.stringify(next));
+  const patch = (id: string, values: Partial<Pair>) => update(rows.map((row) => row.id === id ? { ...row, ...values } : row));
+  return <div><BodyTableHeader onAdd={() => update([...rows, emptyPair("body-param")])} simple />{rows.map((row) => <div key={row.id} className="grid grid-cols-[32px_minmax(130px,.8fr)_minmax(180px,1.2fr)_42px] items-center border-b border-white/[0.04] px-4 py-2"><input type="checkbox" checked={row.enabled} onChange={(event) => patch(row.id, { enabled: event.target.checked })} className="accent-violet-500" aria-label="Activar campo"/><input value={row.key} onChange={(event) => patch(row.id, { key: event.target.value })} placeholder="clave" autoComplete="off" className="h-9 border-r border-white/[0.05] bg-transparent px-3 font-mono text-xs text-violet-100 outline-none"/><input value={row.value} onChange={(event) => patch(row.id, { value: event.target.value })} placeholder="valor" autoComplete="off" spellCheck={false} className="h-9 min-w-0 bg-transparent px-3 font-mono text-xs text-white outline-none"/><RemoveBodyRow onClick={() => update(removeOrReset(rows, row.id, () => emptyPair("body-param")))}/></div>)}</div>;
+}
+
+function BodyTableHeader({ onAdd, simple = false }: { onAdd: () => void; simple?: boolean }) {
+  return <><div className="flex items-center justify-between border-b border-white/[0.045] px-5 py-3"><span className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">Campos del body</span><button type="button" onClick={onAdd} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs text-violet-300 hover:bg-violet-400/10"><CirclePlus size={14}/> Añadir</button></div><div className={`grid ${simple ? "grid-cols-[32px_minmax(130px,.8fr)_minmax(180px,1.2fr)_42px]" : "grid-cols-[32px_88px_minmax(120px,.8fr)_minmax(180px,1.2fr)_42px]"} border-b border-white/[0.04] px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase`}><span/>{simple ? null : <span>Tipo</span>}<span>Clave</span><span>Valor</span><span/></div></>;
+}
+
+function RemoveBodyRow({ onClick }: { onClick: () => void }) {
+  return <button type="button" onClick={onClick} className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-red-400/10 hover:text-red-300" aria-label="Eliminar campo"><Trash2 size={13}/></button>;
+}
+
+function BinaryBodyEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return <div className="grid min-h-[290px] place-items-center p-6 text-center"><div><div className="mx-auto grid size-12 place-items-center rounded-2xl border border-violet-300/15 bg-violet-500/10 text-violet-300"><FileUp size={20}/></div><p className="mt-4 text-xs font-medium text-white">{fileName(value) || "Selecciona el archivo que se enviará"}</p>{value ? <p className="mx-auto mt-2 max-w-md truncate font-mono text-[10px] text-muted-foreground">{value}</p> : null}<button type="button" onClick={async () => { const path = await chooseBodyFile(); if (path) onChange(path); }} className="mt-5 h-9 rounded-lg border border-violet-300/15 bg-violet-500/10 px-4 text-xs text-violet-200 hover:bg-violet-500/15">{value ? "Cambiar archivo" : "Elegir archivo"}</button></div></div>;
+}
+
+function GraphqlBodyEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const parsed = parseSavedValue<{ query: string; variables: string }>(value, { query: "", variables: "{}" });
+  const patch = (next: Partial<typeof parsed>) => onChange(JSON.stringify({ ...parsed, ...next }));
+  return <div className="grid min-h-[290px] grid-cols-[1.2fr_.8fr] divide-x divide-white/[0.05] max-md:grid-cols-1 max-md:divide-x-0"><label className="flex min-h-0 flex-col"><span className="px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">Query</span><textarea value={parsed.query} onChange={(event) => patch({ query: event.target.value })} autoComplete="off" spellCheck={false} placeholder={"query GetUser {\n  user { id name }\n}"} className="min-h-56 flex-1 resize-none bg-[#10091c] p-4 font-mono text-xs leading-6 text-violet-100 outline-none"/></label><label className="flex min-h-0 flex-col border-t border-white/[0.05] md:border-t-0"><span className="px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">Variables JSON</span><textarea value={parsed.variables} onChange={(event) => patch({ variables: event.target.value })} autoComplete="off" spellCheck={false} placeholder={'{\n  "id": "1"\n}'} className="min-h-40 flex-1 resize-none bg-[#10091c] p-4 font-mono text-xs leading-6 text-sky-200 outline-none"/></label></div>;
 }
 
 function ResponsePanel({
@@ -921,7 +1085,7 @@ function CurlImportDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[80] grid place-items-center bg-black/70 px-4 backdrop-blur-sm"
+      className="fixed inset-0 z-80 grid place-items-center bg-black/70 px-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="curl-import-title"
@@ -1010,6 +1174,144 @@ function encodeTemplateValue(value: string) {
       /^\{\{.+\}\}$/.test(part) ? part : encodeURIComponent(part),
     )
     .join("");
+}
+
+function normalizeBodyType(type: string) {
+  if (type === "json") return "raw:json";
+  if (type === "text") return "raw:text";
+  if (type === "form") return "urlencoded";
+  return type || "none";
+}
+
+function normalizeBodyValue(type: string, body: string) {
+  if (type !== "form" || isJsonArray(body)) return body;
+  return JSON.stringify(
+    body
+      .split("&")
+      .filter(Boolean)
+      .map((part, index) => {
+        const separator = part.indexOf("=");
+        return {
+          id: `legacy-form-${index}`,
+          enabled: true,
+          key: decodeURIComponent(
+            separator < 0 ? part : part.slice(0, separator),
+          ),
+          value: decodeURIComponent(
+            separator < 0 ? "" : part.slice(separator + 1),
+          ),
+        };
+      }),
+  );
+}
+
+function contentTypeForBody(type: string) {
+  if (type === "urlencoded") return "application/x-www-form-urlencoded";
+  if (type === "binary") return "application/octet-stream";
+  if (type === "graphql" || type === "raw:json") return "application/json";
+  if (type === "raw:xml") return "application/xml";
+  if (type === "raw:html") return "text/html";
+  if (type === "raw:text") return "text/plain";
+  return null;
+}
+
+function emptyPair(prefix: string): Pair {
+  return {
+    id: `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    enabled: true,
+    key: "",
+    value: "",
+  };
+}
+
+function emptyBodyField(kind: BodyField["kind"]): BodyField {
+  return { ...emptyPair("body-field"), kind };
+}
+
+function removeOrReset<T extends { id: string }>(
+  rows: T[],
+  id: string,
+  fallback: () => T,
+) {
+  const next = rows.filter((row) => row.id !== id);
+  return next.length ? next : [fallback()];
+}
+
+function isJsonArray(value: string) {
+  try {
+    return Array.isArray(JSON.parse(value));
+  } catch {
+    return false;
+  }
+}
+
+function validateJson(value: string): { valid: boolean; error?: string } | null {
+  if (!value.trim()) return null;
+  try {
+    JSON.parse(value);
+    return { valid: true };
+  } catch (error) {
+    return { valid: false, error: (error as Error).message };
+  }
+}
+
+function formatJson(value: string): string | null {
+  if (!value.trim()) return null;
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return null;
+  }
+}
+
+const VOID_TAGS = new Set([
+  "area", "base", "br", "col", "embed", "hr", "img", "input",
+  "link", "meta", "param", "source", "track", "wbr",
+]);
+
+function formatMarkup(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const withBreaks = trimmed
+    .replace(/>\s*</g, "><")
+    .replace(/></g, ">\n<");
+  let indent = 0;
+  return withBreaks
+    .split("\n")
+    .map((line) => {
+      if (/^<\/[^>]+>/.test(line)) indent = Math.max(indent - 1, 0);
+      const padded = "  ".repeat(indent) + line;
+      const tag = line.match(/^<([^\s/>]+)/)?.[1]?.toLowerCase();
+      const isOpen = /^<[^!?/][^>]*[^/]>$/.test(line);
+      const isSelfContained = /^<([^\s>]+)[^>]*>.*<\/\1>$/.test(line);
+      const isVoid = tag ? VOID_TAGS.has(tag) : false;
+      if (isOpen && !isSelfContained && !isVoid) indent += 1;
+      return padded;
+    })
+    .join("\n");
+}
+
+function isGraphqlBody(value: string) {
+  try {
+    const parsed = JSON.parse(value);
+    return (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof parsed.query === "string" &&
+      typeof parsed.variables === "string"
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function chooseBodyFile() {
+  const path = await open({ multiple: false, directory: false });
+  return typeof path === "string" ? path : null;
+}
+
+function fileName(path: string) {
+  return path.split(/[\\/]/).pop() ?? "";
 }
 
 function parseSavedValue<T>(source: string, fallback: T): T {
