@@ -6,6 +6,21 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-07-16
+
+### Añadido
+
+- Nuevos tipos de body: `form-data`, `x-www-form-urlencoded`, `raw`, `binary` y `GraphQL`.
+- Selección de archivos nativa para campos multipart y bodies binarios, con límite de 25 MB.
+- Subtipos `JSON`, `Text`, `XML` y `HTML` para bodies raw con `Content-Type` automático.
+- Editor GraphQL separado para query y variables JSON.
+
+### Cambiado
+
+- El editor del body ya no muestra autocompletado y mantiene la sustitución de variables al enviar.
+- Los bodies `form` guardados por versiones anteriores se convierten automáticamente al nuevo formato.
+- La importación cURL adapta los formularios URL encoded al editor estructurado.
+
 ## [3.0.0] - 2026-07-15
 
 Tercera versión mayor de Flux, centrada en personalización, portabilidad y una gestión más clara del workspace.

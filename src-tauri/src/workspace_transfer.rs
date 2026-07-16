@@ -235,7 +235,7 @@ pub fn export_workspace(
         if !input.include_secrets {
             redacted_values += redact_value(&mut headers, None);
             redacted_values += redact_value(&mut auth, None);
-            if body_type == "json" {
+            if body_type == "json" || body_type == "raw:json" {
                 if let Ok(mut json_body) = serde_json::from_str::<Value>(&exported_body) {
                     redacted_values += redact_value(&mut json_body, None);
                     exported_body = serde_json::to_string_pretty(&json_body).unwrap_or_default();

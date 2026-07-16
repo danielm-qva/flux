@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use reqwest::{header::HeaderName, Method, Url};
+use reqwest::{header::HeaderName, multipart, Method, Url};
 use rusqlite::{params, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -9,6 +9,7 @@ use uuid::Uuid;
 use crate::database::DatabaseState;
 
 const MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
+const MAX_REQUEST_FILE_BYTES: u64 = 25 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -371,8 +372,26 @@ pub struct ExecuteRequestInput {
     method: String,
     url: String,
     headers: Vec<HttpHeader>,
+    #[serde(default)]
+    body_type: String,
     body: Option<String>,
     timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BodyField {
+    enabled: bool,
+    key: String,
+    value: String,
+    #[serde(default = "default_body_field_kind")]
+    kind: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GraphqlBody {
+    query: String,
+    variables: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -412,7 +431,7 @@ pub async fn execute_http_request(input: ExecuteRequestInput) -> Result<HttpResp
         request = request.header(name, header.value);
     }
     if let Some(body) = input.body {
-        request = request.body(body);
+        request = apply_request_body(request, &input.body_type, body)?;
     }
 
     let started = Instant::now();
@@ -442,6 +461,83 @@ pub async fn execute_http_request(input: ExecuteRequestInput) -> Result<HttpResp
         duration_ms,
         size_bytes,
     })
+}
+
+fn apply_request_body(
+    request: reqwest::RequestBuilder,
+    body_type: &str,
+    body: String,
+) -> Result<reqwest::RequestBuilder, String> {
+    match body_type {
+        "none" => Ok(request),
+        "urlencoded" | "form" => {
+            let fields: Vec<BodyField> = serde_json::from_str(&body)
+                .map_err(|_| "Los campos x-www-form-urlencoded no son válidos.".to_string())?;
+            let values: Vec<(String, String)> = fields
+                .into_iter()
+                .filter(|field| field.enabled && !field.key.trim().is_empty())
+                .map(|field| (field.key, field.value))
+                .collect();
+            Ok(request.form(&values))
+        }
+        "form-data" => {
+            let fields: Vec<BodyField> = serde_json::from_str(&body)
+                .map_err(|_| "Los campos form-data no son válidos.".to_string())?;
+            let mut form = multipart::Form::new();
+            for field in fields
+                .into_iter()
+                .filter(|field| field.enabled && !field.key.trim().is_empty())
+            {
+                if field.kind == "file" {
+                    let bytes = read_request_file(&field.value)?;
+                    let name = std::path::Path::new(&field.value)
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("archivo")
+                        .to_string();
+                    form = form.part(field.key, multipart::Part::bytes(bytes).file_name(name));
+                } else {
+                    form = form.text(field.key, field.value);
+                }
+            }
+            Ok(request.multipart(form))
+        }
+        "binary" => {
+            let bytes = read_request_file(&body)?;
+            Ok(request.body(bytes))
+        }
+        "graphql" => {
+            let graphql: GraphqlBody = serde_json::from_str(&body)
+                .map_err(|_| "El body GraphQL no es válido.".to_string())?;
+            let variables = serde_json::from_str::<serde_json::Value>(&graphql.variables)
+                .map_err(|_| "Las variables GraphQL deben contener JSON válido.".to_string())?;
+            let payload = serde_json::json!({
+                "query": graphql.query,
+                "variables": variables,
+            });
+            Ok(request.body(payload.to_string()))
+        }
+        _ => Ok(request.body(body)),
+    }
+}
+
+fn read_request_file(path: &str) -> Result<Vec<u8>, String> {
+    if path.trim().is_empty() {
+        return Err("Selecciona un archivo para el body.".to_string());
+    }
+    let metadata = std::fs::metadata(path)
+        .map_err(|_| "No se pudo acceder al archivo seleccionado.".to_string())?;
+    if !metadata.is_file() {
+        return Err("La ruta seleccionada no corresponde a un archivo.".to_string());
+    }
+    if metadata.len() > MAX_REQUEST_FILE_BYTES {
+        return Err("El archivo supera el límite de 25 MB.".to_string());
+    }
+    std::fs::read(path).map_err(|_| "No se pudo leer el archivo seleccionado.".to_string())
+}
+
+fn default_body_field_kind() -> String {
+    "text".to_string()
 }
 
 fn request_error(error: reqwest::Error) -> String {
