@@ -1,5 +1,6 @@
 mod auth;
 mod database;
+mod flow;
 mod organization;
 mod request;
 mod workspace;
@@ -33,6 +34,11 @@ pub fn run() {
             organization::list_request_history,
             organization::record_request_history,
             organization::clear_request_history,
+            flow::list_request_flows,
+            flow::create_request_flow,
+            flow::rename_request_flow,
+            flow::update_request_flow,
+            flow::delete_request_flow,
             workspace::list_workspaces,
             workspace::create_workspace,
             workspace::rename_workspace,
