@@ -4,7 +4,6 @@ import {
   addEdge,
   Background,
   Controls,
-  MiniMap,
   ReactFlow,
   useEdgesState,
   useNodesState,
@@ -15,7 +14,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { LoaderCircle, Play, Plus, Save, Trash2, Workflow } from "lucide-react";
+import { CircleHelp, LoaderCircle, Play, Plus, Save, Trash2, Workflow } from "lucide-react";
 import { toast } from "sonner";
 
 import type { SavedRequest } from "@/features/requests/request-client";
@@ -26,6 +25,7 @@ import {
   type RequestFlowNode,
 } from "./flow-node";
 import { FlowInspector } from "./flow-inspector";
+import { FlowOnboarding } from "./flow-onboarding";
 import {
   parseGraph,
   requestFlowApi,
@@ -43,6 +43,7 @@ import {
 } from "./flow-runner";
 
 const nodeTypes = { request: RequestFlowNodeView };
+const FLOW_ONBOARDING_VERSION = "v1";
 
 export function FlowsView({
   userId,
@@ -63,6 +64,7 @@ export function FlowsView({
   const [flows, setFlows] = useState<RequestFlow[]>([]);
   const [flowId, setFlowId] = useState("");
   const [dialog, setDialog] = useState<null | "create" | "rename" | "delete">(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   const activeFlow = flows.find((flow) => flow.id === flowId) ?? null;
 
@@ -82,6 +84,22 @@ export function FlowsView({
       active = false;
     };
   }, [userId, workspace.id]);
+
+  useEffect(() => {
+    const key = `flux:flow-onboarding:${FLOW_ONBOARDING_VERSION}:${userId}`;
+    const openTimer = window.setTimeout(() => {
+      if (window.localStorage.getItem(key) !== "complete") setOnboardingOpen(true);
+    }, 0);
+    return () => window.clearTimeout(openTimer);
+  }, [userId]);
+
+  const closeOnboarding = useCallback(() => {
+    window.localStorage.setItem(
+      `flux:flow-onboarding:${FLOW_ONBOARDING_VERSION}:${userId}`,
+      "complete",
+    );
+    setOnboardingOpen(false);
+  }, [userId]);
 
   async function createFlow(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -171,6 +189,13 @@ export function FlowsView({
               </button>
             </>
           ) : null}
+          <button
+            type="button"
+            onClick={() => setOnboardingOpen(true)}
+            className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg border border-violet-300/15 bg-violet-500/[0.07] px-2.5 text-[11px] text-violet-200 hover:bg-violet-500/15"
+          >
+            <CircleHelp size={13} /> Guía
+          </button>
         </div>
 
         {activeFlow ? (
@@ -208,6 +233,7 @@ export function FlowsView({
           onConfirm={deleteFlow}
         />
       ) : null}
+      <FlowOnboarding open={onboardingOpen} onClose={closeOnboarding} />
     </FlowRequestsContext.Provider>
   );
 }
@@ -430,12 +456,13 @@ function FlowEditor({
             onNodeClick={(_, node) => setSelectedNodeId(node.id)}
             onPaneClick={() => setSelectedNodeId(null)}
             fitView
+            fitViewOptions={{ padding: 0.35, maxZoom: 0.82 }}
+            minZoom={0.35}
             proOptions={{ hideAttribution: true }}
-            className="bg-[#0b0715]"
+            className="flow-canvas bg-[#0b0715]"
           >
-            <Background color="#3b2d5e" gap={18} />
-            <Controls className="!bg-[#150f24] !text-white" />
-            <MiniMap pannable className="!bg-[#150f24]" />
+            <Background color="#49376f" gap={20} size={1.25} />
+            <Controls className="flow-controls" />
           </ReactFlow>
         </div>
         {selectedNode ? (

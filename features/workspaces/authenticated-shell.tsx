@@ -830,7 +830,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               </>
             ) : null}
             {activeWorkspace ? (
-              <button type="button" onClick={() => void leaveRequestView("flows")} title="Flujos" aria-label="Abrir flujos" className={`relative hidden size-9 shrink-0 place-items-center rounded-lg border sm:grid ${mainView === "flows" ? "border-violet-400/25 bg-violet-500/15 text-violet-200" : "border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white"}`}><Workflow size={15} /></button>
+              <button type="button" onClick={() => void leaveRequestView("flows")} title="Abrir Flow" aria-label="Abrir Flow" className={`relative inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-all ${mainView === "flows" ? "border-violet-300/50 bg-violet-500/25 text-white shadow-[0_0_22px_rgba(139,92,246,0.2)]" : "border-violet-300/25 bg-violet-500/10 text-violet-200 hover:border-violet-300/45 hover:bg-violet-500/20 hover:text-white"}`}><Workflow size={15} /><span className="hidden sm:inline">Flow</span></button>
             ) : null}
             <button type="button" onClick={() => void leaveRequestView("settings")} title="Settings" aria-label="Abrir settings" className={`relative hidden size-9 shrink-0 place-items-center rounded-lg border xl:grid ${mainView === "settings" ? "border-violet-400/25 bg-violet-500/15 text-violet-200" : "border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white"}`}><Settings size={15} /></button>
             <div className="grid size-9 shrink-0 place-items-center rounded-full bg-violet-500/15 text-xs font-semibold text-violet-200">

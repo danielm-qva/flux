@@ -272,3 +272,36 @@ html[data-flux-theme] [class*="bg-[#151021]"] { background-color: var(--flux-dia
   background-size: 48px 48px;
   mask-image: radial-gradient(circle at center, black, transparent 72%);
 }
+
+/* React Flow uses light control surfaces by default. These styles keep its
+   navigation chrome legible and consistent with Flux's dark canvas. */
+.flow-canvas .react-flow__controls {
+  overflow: hidden;
+  border: 1px solid rgb(196 181 253 / 20%);
+  border-radius: 12px;
+  background: rgb(21 15 36 / 96%);
+  box-shadow: 0 14px 35px rgb(0 0 0 / 38%);
+}
+
+.flow-canvas .react-flow__controls-button {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 7%);
+  background: transparent;
+  color: #ddd6fe;
+  fill: currentColor;
+}
+
+.flow-canvas .react-flow__controls-button:last-child {
+  border-bottom: 0;
+}
+
+.flow-canvas .react-flow__controls-button:hover {
+  background: rgb(139 92 246 / 20%);
+  color: #fff;
+}
+
+.flow-canvas .react-flow__controls-button svg {
+  fill: currentColor;
+}

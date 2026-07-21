@@ -29,6 +29,7 @@ export function EnvironmentAutocomplete({
   highlightVariables = false,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
   const [token, setToken] = useState<{
     start: number;
     end: number;
@@ -42,6 +43,15 @@ export function EnvironmentAutocomplete({
         )
         .slice(0, 8)
     : [];
+
+  function syncHighlightScroll(
+    element: HTMLInputElement | HTMLTextAreaElement,
+  ) {
+    if (highlightRef.current) {
+      highlightRef.current.scrollLeft = element.scrollLeft;
+      highlightRef.current.scrollTop = element.scrollTop;
+    }
+  }
 
   function inspect(element: HTMLInputElement | HTMLTextAreaElement) {
     const caret = element.selectionStart ?? element.value.length;
@@ -110,10 +120,14 @@ export function EnvironmentAutocomplete({
     ) => {
       onChange(event.target.value);
       inspect(event.target);
+      syncHighlightScroll(event.target);
     },
     onClick: (
       event: React.MouseEvent<HTMLInputElement | HTMLTextAreaElement>,
-    ) => inspect(event.currentTarget),
+    ) => {
+      inspect(event.currentTarget);
+      syncHighlightScroll(event.currentTarget);
+    },
     onFocus: (
       event: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
     ) => inspect(event.currentTarget),
@@ -125,6 +139,9 @@ export function EnvironmentAutocomplete({
         inspect(event.currentTarget);
     },
     onKeyDown: keyDown,
+    onScroll: (
+      event: React.UIEvent<HTMLInputElement | HTMLTextAreaElement>,
+    ) => syncHighlightScroll(event.currentTarget),
     onBlur: () => window.setTimeout(() => setToken(null), 120),
   };
 
@@ -134,10 +151,13 @@ export function EnvironmentAutocomplete({
     >
       {highlightVariables && !multiline && value ? (
         <div
+          ref={highlightRef}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 flex items-center overflow-hidden px-3 font-mono text-xs whitespace-pre"
+          className="pointer-events-none absolute inset-0 overflow-hidden px-3 font-mono text-xs whitespace-pre"
         >
-          <HighlightedValue value={value} />
+          <div className="flex h-full min-w-max items-center">
+            <HighlightedValue value={value} />
+          </div>
         </div>
       ) : null}
       {multiline ? (
