@@ -18,8 +18,9 @@ import {
   Pencil,
   Settings,
   Trash2,
+  Workflow,
 } from "lucide-react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { AuthUser } from "@/features/auth/auth-client";
@@ -30,6 +31,8 @@ import type { WorkspaceImport } from "@/features/workspaces/workspace-transfer-c
 import { WorkspaceTransfer } from "@/features/workspaces/workspace-transfer";
 import { RequestBuilder } from "@/features/requests/request-builder";
 import { RequestTree } from "@/features/requests/request-tree";
+import { RequestTabs } from "@/features/requests/request-tabs";
+import { FlowsView } from "@/features/flows/flows-view";
 import {
   requestFolderApi,
   requestHistoryApi,
@@ -46,7 +49,7 @@ import {
 } from "./workspace-client";
 
 type Props = { user: AuthUser; onLogout: () => Promise<void> };
-type MainView = "request" | "environment" | "settings";
+type MainView = "request" | "environment" | "settings" | "flows";
 
 export function AuthenticatedShell({ user, onLogout }: Props) {
   const requestListRef = useRef<HTMLDivElement>(null);
@@ -79,6 +82,9 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   const [history, setHistory] = useState<RequestHistoryEntry[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeRequestId, setActiveRequestId] = useState("");
+  const [openRequestIds, setOpenRequestIds] = useState<string[]>([]);
+  const [dirtyRequestIds, setDirtyRequestIds] = useState<Set<string>>(new Set());
+  const requestSavers = useRef(new Map<string, () => Promise<boolean>>());
   const [pendingRequestDelete, setPendingRequestDelete] =
     useState<SavedRequest | null>(null);
   const [requestToRename, setRequestToRename] = useState<SavedRequest | null>(
@@ -160,6 +166,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         if (!active) return;
         setRequests(items);
         setActiveRequestId(items[0]?.id ?? "");
+        setOpenRequestIds(items[0] ? [items[0].id] : []);
       })
       .catch((cause) => active && setError(String(cause)));
     return () => {
@@ -237,6 +244,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
       setVariables([]);
       setRequests([]);
       setActiveRequestId("");
+      setOpenRequestIds([]);
       setActiveWorkspaceId(remaining[0]?.id ?? "");
       setMainView("request");
       toast.success("Workspace eliminado", {
@@ -286,6 +294,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     event.preventDefault();
     if (!activeWorkspace) return;
     const form = new FormData(event.currentTarget);
+    if (!(await saveOpenRequest())) return;
     const name = String(form.get("name") ?? "").trim();
     const duplicated = requests.some(
       (request) => request.name.localeCompare(name, undefined, { sensitivity: "accent" }) === 0,
@@ -305,6 +314,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
       );
       setRequests((items) => [...items, created]);
       setActiveRequestId(created.id);
+      setOpenRequestIds((ids) => [...ids.filter((id) => id !== created.id), created.id]);
       setRequestForm(false);
       setRequestFolderId(null);
       setMainView("request");
@@ -386,6 +396,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         (request) => request.id !== pendingRequestDelete.id,
       );
       setRequests(remaining);
+      setOpenRequestIds((ids) => ids.filter((id) => id !== pendingRequestDelete.id));
       if (activeRequestId === pendingRequestDelete.id) {
         setActiveRequestId(remaining[0]?.id ?? "");
       }
@@ -435,10 +446,12 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   }
 
   async function duplicateRequest(request: SavedRequest) {
+    if (!(await saveOpenRequest())) return;
     try {
       const duplicate = await savedRequestApi.duplicate(user.id, request.id);
       setRequests((items) => [...items, duplicate]);
       setActiveRequestId(duplicate.id);
+      setOpenRequestIds((ids) => [...ids.filter((id) => id !== duplicate.id), duplicate.id]);
       setMainView("request");
       setError(null);
       toast.success("Petición duplicada", {
@@ -523,16 +536,56 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     }
   }
 
+  const registerRequestSave = useCallback((requestId: string, save: () => Promise<boolean>) => {
+    requestSavers.current.set(requestId, save);
+    return () => { requestSavers.current.delete(requestId); };
+  }, []);
+
+  const updateRequestDirty = useCallback((requestId: string, dirty: boolean) => {
+    setDirtyRequestIds((current) => {
+      const next = new Set(current);
+      if (dirty) next.add(requestId); else next.delete(requestId);
+      return next;
+    });
+  }, []);
+
+  async function saveOpenRequest(requestId = activeRequestId) {
+    if (!requestId || !dirtyRequestIds.has(requestId)) return true;
+    return (await requestSavers.current.get(requestId)?.()) ?? true;
+  }
+
+  async function openRequest(request: SavedRequest) {
+    if (request.id !== activeRequestId && !(await saveOpenRequest())) return;
+    setOpenRequestIds((ids) => ids.includes(request.id) ? ids : [...ids, request.id]);
+    setActiveRequestId(request.id);
+    setMainView("request");
+  }
+
+  async function closeRequestTab(requestId: string) {
+    if (!(await saveOpenRequest(requestId))) return;
+    const index = openRequestIds.indexOf(requestId);
+    const remaining = openRequestIds.filter((id) => id !== requestId);
+    setOpenRequestIds(remaining);
+    if (activeRequestId === requestId) setActiveRequestId(remaining[index] ?? remaining[index - 1] ?? "");
+  }
+
+  async function leaveRequestView(view: MainView) {
+    if (!(await saveOpenRequest())) return;
+    setMainView(view);
+  }
+
   function openRequestEditor() {
     setMainView("request");
     window.setTimeout(() => document.getElementById("request-url")?.focus(), 0);
   }
 
   function changeWorkspace(workspaceId: string) {
+    void saveOpenRequest();
     setRequests([]);
     setFolders([]);
     setHistory([]);
     setActiveRequestId("");
+    setOpenRequestIds([]);
     setActiveWorkspaceId(workspaceId);
     setMainView("request");
   }
@@ -584,7 +637,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
           {activeWorkspace ? (
             <div ref={requestListRef} className="flex min-h-0 flex-1 flex-col">
               <RequestTree folders={folders} requests={requests} activeRequestId={mainView === "request" ? activeRequestId : ""}
-                onSelect={(request) => { setActiveRequestId(request.id); setMainView("request"); }}
+                onSelect={(request) => void openRequest(request)}
                 onNewRequest={(folderId) => { setRequestFolderId(folderId); setRequestForm(true); }}
                 onNewFolder={(parentId) => setFolderForm(parentId)} onRenameFolder={setFolderToRename} onDeleteFolder={setFolderToDelete}
                 onRequestMenu={(request, action) => { if (action === "rename") setRequestToRename(request); else if (action === "duplicate") void duplicateRequest(request); else if (action === "move") setRequestToMove(request); else setPendingRequestDelete(request); }} />
@@ -763,7 +816,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                 {activeEnvironment ? (
                   <button
                     type="button"
-                    onClick={() => setMainView("environment")}
+                    onClick={() => void leaveRequestView("environment")}
                     title="Editar environment"
                     aria-label="Editar environment"
                     className={`hidden h-9 shrink-0 items-center gap-2 rounded-lg border px-2.5 text-xs sm:inline-flex 2xl:px-3 ${mainView === "environment" ? "border-violet-400/25 bg-violet-500/15 text-violet-100" : "border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white"}`}
@@ -776,7 +829,10 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                 ) : null}
               </>
             ) : null}
-            <button type="button" onClick={() => setMainView("settings")} title="Settings" aria-label="Abrir settings" className={`relative hidden size-9 shrink-0 place-items-center rounded-lg border xl:grid ${mainView === "settings" ? "border-violet-400/25 bg-violet-500/15 text-violet-200" : "border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white"}`}><Settings size={15} /></button>
+            {activeWorkspace ? (
+              <button type="button" onClick={() => void leaveRequestView("flows")} title="Abrir Flow" aria-label="Abrir Flow" className={`relative inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-all ${mainView === "flows" ? "border-violet-300/50 bg-violet-500/25 text-white shadow-[0_0_22px_rgba(139,92,246,0.2)]" : "border-violet-300/25 bg-violet-500/10 text-violet-200 hover:border-violet-300/45 hover:bg-violet-500/20 hover:text-white"}`}><Workflow size={15} /><span className="hidden sm:inline">Flow</span></button>
+            ) : null}
+            <button type="button" onClick={() => void leaveRequestView("settings")} title="Settings" aria-label="Abrir settings" className={`relative hidden size-9 shrink-0 place-items-center rounded-lg border xl:grid ${mainView === "settings" ? "border-violet-400/25 bg-violet-500/15 text-violet-200" : "border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white"}`}><Settings size={15} /></button>
             <div className="grid size-9 shrink-0 place-items-center rounded-full bg-violet-500/15 text-xs font-semibold text-violet-200">
               {user.name.slice(0, 1).toUpperCase()}
             </div>
@@ -794,22 +850,35 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
           {!loading && !activeWorkspace && mainView !== "settings" ? (
             <EmptyWorkspace onCreate={() => setWorkspaceForm(true)} />
           ) : null}
-          {activeWorkspace &&
-          activeRequest &&
-          mainView === "request" ? (
-            <RequestBuilder
-              key={activeRequest.id}
-              userId={user.id}
-              workspace={activeWorkspace}
-              variables={activeEnvironment ? variables : []}
-              request={activeRequest}
-              onSaved={(saved) =>
-                setRequests((items) =>
-                  items.map((item) => (item.id === saved.id ? saved : item)),
-                )
-              }
-              onExecuted={(result) => void recordExecution(result)}
-            />
+          {activeWorkspace && activeRequest && mainView === "request" ? (
+            <div className="flex h-full min-h-0 w-full flex-col">
+              <RequestTabs
+                tabs={openRequestIds.map((id) => requests.find((item) => item.id === id)).filter((item): item is SavedRequest => Boolean(item))}
+                activeId={activeRequestId}
+                dirtyIds={dirtyRequestIds}
+                onSelect={(id) => { const request = requests.find((item) => item.id === id); if (request) void openRequest(request); }}
+                onClose={(id) => void closeRequestTab(id)}
+                onNew={() => setRequestForm(true)}
+              />
+              <div className="relative min-h-0 flex-1">
+                {openRequestIds.map((id) => {
+                  const request = requests.find((item) => item.id === id);
+                  if (!request) return null;
+                  return <div key={id} className={id === activeRequestId ? "h-full" : "hidden"}>
+                    <RequestBuilder
+                      userId={user.id}
+                      workspace={activeWorkspace}
+                      variables={activeEnvironment ? variables : []}
+                      request={request}
+                      onSaved={(saved) => setRequests((items) => items.map((item) => item.id === saved.id ? saved : item))}
+                      onDirtyChange={updateRequestDirty}
+                      registerSave={registerRequestSave}
+                      onExecuted={(result) => void recordExecution(result)}
+                    />
+                  </div>;
+                })}
+              </div>
+            </div>
           ) : null}
           {activeWorkspace &&
           !activeRequest &&
@@ -830,6 +899,14 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               onDelete={() => setPendingEnvironmentDelete(activeEnvironment)}
               onSaveVariable={saveVariable}
               onRemoveVariable={removeVariable}
+            />
+          ) : null}
+          {activeWorkspace && mainView === "flows" ? (
+            <FlowsView
+              userId={user.id}
+              workspace={activeWorkspace}
+              requests={requests}
+              variables={activeEnvironment ? variables : []}
             />
           ) : null}
           {mainView === "settings" ? <SettingsView currentVersion={systemVersion} userId={user.id} workspace={activeWorkspace} onWorkspaceImported={(result) => void workspaceImported(result)} /> : null}

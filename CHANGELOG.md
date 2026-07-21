@@ -6,6 +6,27 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-07-20
+
+Esta versión hace que Flow sea más fácil de descubrir, aprender y utilizar, y mejora la edición de peticiones con URLs extensas.
+
+### Añadido
+
+- Tutorial interactivo de seis pasos que se abre la primera vez que cada usuario entra a Flow.
+- Guía visual de creación de flujos, nodos, conexiones, extracciones de variables, guardado y ejecución.
+- Botón `Guía` dentro de Flow para repetir el tutorial en cualquier momento.
+
+### Cambiado
+
+- Acceso a Flow más visible en la barra principal, ahora con icono, nombre y estado activo destacado.
+- Zoom inicial del lienzo reducido para ofrecer una vista más amplia y cómoda de los nodos.
+- Controles del lienzo adaptados a la paleta oscura de Flux, con mejor contraste y estados interactivos.
+- Minimapa retirado para reducir ruido visual y aprovechar mejor el espacio del editor.
+
+### Corregido
+
+- Las URLs largas ahora se desplazan horizontalmente junto con el cursor y el resaltado de variables, sin aparentar que el campo queda bloqueado.
+
 ## [3.1.0] - 2026-07-16
 
 ### Añadido
@@ -122,6 +143,8 @@ Primera release estable de Flux para Windows.
 - Verificación criptográfica obligatoria de los paquetes de actualización.
 - Clave privada de actualizaciones excluida del repositorio.
 
+[3.2.0]: https://github.com/danielm-qva/flux/releases/tag/v3.2.0
+[3.1.0]: https://github.com/danielm-qva/flux/releases/tag/v3.1.0
 [3.0.0]: https://github.com/danielm-qva/flux/releases/tag/v3.0.0
 [2.0.0]: https://github.com/danielm-qva/flux/releases/tag/v2.0.0
 [1.0.0]: https://github.com/danielm-qva/flux/releases/tag/v1.0.0

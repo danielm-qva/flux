@@ -134,6 +134,20 @@ pub fn initialize(path: &Path) -> Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_request_history_workspace_created
             ON request_history(workspace_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS request_flows (
+            id           TEXT PRIMARY KEY NOT NULL,
+            workspace_id TEXT NOT NULL,
+            name         TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 100),
+            graph_json   TEXT NOT NULL DEFAULT '{\"nodes\":[],\"edges\":[]}',
+            created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+            UNIQUE(workspace_id, name COLLATE NOCASE)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_request_flows_workspace
+            ON request_flows(workspace_id);
         ",
     )?;
 

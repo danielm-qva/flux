@@ -15,7 +15,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -29,6 +29,7 @@ import {
   type HttpResponse,
   type SavedRequest,
 } from "./request-client";
+import { prepareHttpRequest } from "./prepare-http-request";
 import { JsonTree } from "./json-tree";
 import { EnvironmentAutocomplete } from "./environment-autocomplete";
 import { parseCurlCommand } from "./curl-parser";
@@ -71,6 +72,8 @@ export function RequestBuilder({
   request,
   onSaved,
   onExecuted,
+  onDirtyChange,
+  registerSave,
 }: {
   userId: string;
   workspace: Workspace;
@@ -78,6 +81,8 @@ export function RequestBuilder({
   request: SavedRequest;
   onSaved: (request: SavedRequest) => void;
   onExecuted?: (result: { method: string; resolvedUrl: string; response?: HttpResponse; error?: string }) => void;
+  onDirtyChange?: (requestId: string, dirty: boolean) => void;
+  registerSave?: (requestId: string, save: () => Promise<boolean>) => () => void;
 }) {
   const [method, setMethod] = useState<HttpMethod>(() =>
     HTTP_METHODS.includes(request.method as HttpMethod)
@@ -123,6 +128,16 @@ export function RequestBuilder({
   const [saving, setSaving] = useState(false);
   const [curlImporterOpen, setCurlImporterOpen] = useState(false);
   const resolvedUrl = resolveEnvironmentVariables(url, variables);
+  const dirty = useMemo(() =>
+    method !== request.method || url !== request.url ||
+    JSON.stringify(params) !== request.paramsJson ||
+    JSON.stringify(headers) !== request.headersJson || authType !== request.authType ||
+    JSON.stringify(auth) !== request.authJson || bodyType !== normalizeBodyType(request.bodyType) ||
+    body !== normalizeBodyValue(request.bodyType, request.body),
+    [auth, authType, body, bodyType, headers, method, params, request, url],
+  );
+
+  useEffect(() => onDirtyChange?.(request.id, dirty), [dirty, onDirtyChange, request.id]);
 
   function updateParams(next: Pair[]) {
     setParams(next);
@@ -189,51 +204,11 @@ export function RequestBuilder({
     setSending(true);
     setRequestError(null);
     try {
-      const requestHeaders = headers
-        .filter((item) => item.enabled && item.key.trim())
-        .map((item) => ({
-          name: item.key.trim(),
-          value: resolveEnvironmentVariables(item.value, variables),
-        }));
-      let contentType = requestHeaders.find(
-        (header) => header.name.toLowerCase() === "content-type",
+      const prepared = prepareHttpRequest(
+        { method, url, headers, authType, auth, bodyType, body },
+        variables,
       );
-      const expectedContentType = contentTypeForBody(bodyType);
-      if (bodyType === "form-data") {
-        const filtered = requestHeaders.filter(
-          (header) => header.name.toLowerCase() !== "content-type",
-        );
-        requestHeaders.splice(0, requestHeaders.length, ...filtered);
-        contentType = undefined;
-      } else if (expectedContentType) {
-        if (contentType) contentType.value = expectedContentType;
-        else
-          requestHeaders.push({
-            name: "Content-Type",
-            value: expectedContentType,
-          });
-      }
-      if (authType === "basic")
-        requestHeaders.push({
-          name: "Authorization",
-          value: `Basic ${encodeBasicAuth(resolveEnvironmentVariables(auth.username, variables), resolveEnvironmentVariables(auth.password, variables))}`,
-        });
-      if (authType === "api-key" && auth.apiKeyName)
-        requestHeaders.push({
-          name: auth.apiKeyName,
-          value: resolveEnvironmentVariables(auth.apiKeyValue, variables),
-        });
-      const result = await executeHttpRequest({
-        method,
-        url: resolvedUrl,
-        headers: requestHeaders,
-        bodyType,
-        body:
-          bodyType === "none"
-            ? undefined
-            : resolveEnvironmentVariables(body, variables),
-        timeoutMs: 30_000,
-      });
+      const result = await executeHttpRequest({ ...prepared, timeoutMs: 30_000 });
       setResponse(result);
       onExecuted?.({ method, resolvedUrl, response: result });
     } catch (cause) {
@@ -246,7 +221,8 @@ export function RequestBuilder({
     }
   }
 
-  async function saveRequest() {
+  const saveRequest = useCallback(async (showFeedback = true) => {
+    if (!dirty) return true;
     setSaving(true);
     try {
       const saved = await savedRequestApi.update(userId, {
@@ -262,17 +238,21 @@ export function RequestBuilder({
         body,
       });
       onSaved(saved);
-      toast.success("Petición guardada", {
+      if (showFeedback) toast.success("Petición guardada", {
         description: `${saved.name} se actualizó en ${workspace.name}.`,
       });
+      return true;
     } catch (cause) {
       toast.error("No se pudo guardar la petición", {
         description: String(cause),
       });
+      return false;
     } finally {
       setSaving(false);
     }
-  }
+  }, [auth, authType, body, bodyType, dirty, headers, method, onSaved, params, request.id, request.name, userId, url, workspace.name]);
+
+  useEffect(() => registerSave?.(request.id, () => saveRequest(false)), [registerSave, request.id, saveRequest]);
 
   function importCurl(source: string) {
     const parsed = parseCurlCommand(source);
@@ -335,7 +315,7 @@ export function RequestBuilder({
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={saveRequest}
+            onClick={() => void saveRequest(true)}
             disabled={saving}
             className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-violet-400/20 bg-violet-500/[0.07] px-2.5 text-[10px] font-medium text-violet-200 hover:bg-violet-500/15 disabled:cursor-wait disabled:opacity-65"
           >
@@ -1162,11 +1142,6 @@ function formatBytes(bytes: number) {
       ? `${(bytes / 1024).toFixed(1)} KB`
       : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
-function encodeBasicAuth(username: string, password: string) {
-  return btoa(
-    String.fromCharCode(...new TextEncoder().encode(`${username}:${password}`)),
-  );
-}
 function encodeTemplateValue(value: string) {
   return value
     .split(/(\{\{[A-Za-z_][A-Za-z0-9_]*\}\})/g)
@@ -1203,16 +1178,6 @@ function normalizeBodyValue(type: string, body: string) {
         };
       }),
   );
-}
-
-function contentTypeForBody(type: string) {
-  if (type === "urlencoded") return "application/x-www-form-urlencoded";
-  if (type === "binary") return "application/octet-stream";
-  if (type === "graphql" || type === "raw:json") return "application/json";
-  if (type === "raw:xml") return "application/xml";
-  if (type === "raw:html") return "text/html";
-  if (type === "raw:text") return "text/plain";
-  return null;
 }
 
 function emptyPair(prefix: string): Pair {

@@ -28,7 +28,10 @@ export const workspaceApi = {
     invoke<void>("delete_environment_variable", { input: { userId, variableId } }),
 };
 
-export function resolveEnvironmentVariables(template: string, variables: EnvironmentVariable[]) {
+export function resolveEnvironmentVariables(
+  template: string,
+  variables: { key: string; value: string }[],
+) {
   const values = new Map(variables.map((variable) => [variable.key.toUpperCase(), variable.value]));
   return template.replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g, (match, key: string) =>
     values.get(key.toUpperCase()) ?? match,
