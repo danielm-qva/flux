@@ -4,6 +4,7 @@ import { Command } from "cmdk";
 import {
   Clock,
   Clock3,
+  Home,
   FileJson2,
   FolderPlus,
   Layers,
@@ -112,7 +113,7 @@ export function CommandPalette(props: Props) {
           {props.workspaces.length > 1 ? (
             <Command.Group heading="Workspaces">
               {props.workspaces.map((workspace) => (
-                <Item key={workspace.id} value={`workspace ${workspace.name}`} onSelect={run(() => props.onChangeWorkspace(workspace.id))} icon={<Layers size={14} />} hint={workspace.id === props.activeWorkspaceId ? "activo" : undefined}>
+                <Item key={workspace.id} value={`workspace ${workspace.name}`} onSelect={run(() => props.onChangeWorkspace(workspace.id))} icon={<Home size={14} />} hint={workspace.id === props.activeWorkspaceId ? "activo" : undefined}>
                   {workspace.name}
                 </Item>
               ))}
@@ -122,7 +123,7 @@ export function CommandPalette(props: Props) {
           {props.environments.length ? (
             <Command.Group heading="Environments">
               {props.environments.map((environment) => (
-                <Item key={environment.id} value={`environment ${environment.name}`} onSelect={run(() => props.onChangeEnvironment(environment.id))} icon={<FileJson2 size={14} />} hint={environment.id === props.activeEnvironmentId ? "activo" : undefined}>
+                <Item key={environment.id} value={`environment ${environment.name}`} onSelect={run(() => props.onChangeEnvironment(environment.id))} icon={<Layers size={14} />} hint={environment.id === props.activeEnvironmentId ? "activo" : undefined}>
                   {environment.name}
                 </Item>
               ))}

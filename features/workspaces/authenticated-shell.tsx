@@ -7,6 +7,8 @@ import {
   ChevronDown,
   Clock,
   Clock3,
+  Home,
+  Layers,
   FileJson2,
   FolderKanban,
   FolderPlus,
@@ -1199,10 +1201,14 @@ function SelectControl({
 }) {
   return (
     <label className="relative hidden min-w-0 shrink sm:block">
+      <Layers
+        size={13}
+        className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[var(--flux-primary-text)]"
+      />
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-7 w-[clamp(96px,14vw,170px)] cursor-pointer appearance-none truncate rounded-md bg-white/[0.05] pr-6 pl-2.5 text-xs text-zinc-200 ring-1 ring-white/[0.08] outline-none transition hover:bg-white/[0.1] hover:ring-white/[0.16] focus:ring-[var(--flux-primary-border)]"
+        className="h-7 w-[clamp(96px,14vw,170px)] cursor-pointer appearance-none truncate rounded-md bg-white/[0.05] pr-6 pl-7 text-xs text-zinc-200 ring-1 ring-white/[0.08] outline-none transition hover:bg-white/[0.1] hover:ring-white/[0.16] focus:ring-[var(--flux-primary-border)]"
       >
         <option value="">{placeholder}</option>
         {items.map((item) => (
@@ -1231,10 +1237,14 @@ function WorkspaceSelect({
   return (
     <label className="relative block min-w-0 shrink">
       <span className="sr-only">Workspace activo</span>
+      <Home
+        size={13}
+        className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[var(--flux-primary-text)]"
+      />
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-7 w-[clamp(96px,14vw,170px)] cursor-pointer appearance-none truncate rounded-md bg-white/[0.05] pr-6 pl-2.5 text-xs font-medium text-white ring-1 ring-white/[0.08] outline-none transition hover:bg-white/[0.1] hover:ring-white/[0.16] focus:ring-[var(--flux-primary-border)]"
+        className="h-7 w-[clamp(96px,14vw,170px)] cursor-pointer appearance-none truncate rounded-md bg-white/[0.05] pr-6 pl-7 text-xs font-medium text-white ring-1 ring-white/[0.08] outline-none transition hover:bg-white/[0.1] hover:ring-white/[0.16] focus:ring-[var(--flux-primary-border)]"
       >
         <option value="">Sin workspace</option>
         {items.map((item) => (
