@@ -4,7 +4,6 @@ import Image from "next/image";
 import { getVersion } from "@tauri-apps/api/app";
 import {
   ArrowLeft,
-  Box,
   ChevronDown,
   Clock3,
   FileJson2,
@@ -19,8 +18,9 @@ import {
   Settings,
   Trash2,
   Workflow,
+  MoreHorizontal,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { AuthUser } from "@/features/auth/auth-client";
@@ -29,10 +29,15 @@ import { UpdateControl } from "@/features/updater/update-control";
 import { SettingsView, ThemeRuntime } from "@/features/settings/settings-view";
 import type { WorkspaceImport } from "@/features/workspaces/workspace-transfer-client";
 import { WorkspaceTransfer } from "@/features/workspaces/workspace-transfer";
+import { CommandPalette } from "./command-palette";
+import { sampleAlreadySeeded, seedSampleWorkspace } from "./sample-workspace";
 import { RequestBuilder } from "@/features/requests/request-builder";
 import { RequestTree } from "@/features/requests/request-tree";
 import { RequestTabs } from "@/features/requests/request-tabs";
 import { FlowsView } from "@/features/flows/flows-view";
+import { createFlowFromRequests, parseGraph, requestFlowApi, type RequestFlow } from "@/features/flows/flow-client";
+import { suggestExtractions } from "@/features/flows/suggest-extractions";
+import { ThemePicker } from "@/features/settings/theme-picker";
 import {
   requestFolderApi,
   requestHistoryApi,
@@ -49,6 +54,21 @@ import {
 } from "./workspace-client";
 
 type Props = { user: AuthUser; onLogout: () => Promise<void> };
+type FlowVariable = { key: string; from: string };
+
+function collectFlowVariables(flows: RequestFlow[]): FlowVariable[] {
+  const seen = new Map<string, FlowVariable>();
+  for (const flow of flows) {
+    for (const node of parseGraph(flow.graphJson).nodes) {
+      for (const extraction of node.extractions ?? []) {
+        const key = extraction.variable.trim();
+        if (key && !seen.has(key.toLowerCase())) seen.set(key.toLowerCase(), { key, from: flow.name });
+      }
+    }
+  }
+  return [...seen.values()];
+}
+
 type MainView = "request" | "environment" | "settings" | "flows";
 
 export function AuthenticatedShell({ user, onLogout }: Props) {
@@ -81,6 +101,10 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   const [requestToMove, setRequestToMove] = useState<SavedRequest | null>(null);
   const [history, setHistory] = useState<RequestHistoryEntry[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [introFlowId, setIntroFlowId] = useState<string | undefined>();
+  const [flowVariables, setFlowVariables] = useState<FlowVariable[]>([]);
+  const handleFlowsChange = useCallback((flows: RequestFlow[]) => setFlowVariables(collectFlowVariables(flows)), []);
   const [activeRequestId, setActiveRequestId] = useState("");
   const [openRequestIds, setOpenRequestIds] = useState<string[]>([]);
   const [dirtyRequestIds, setDirtyRequestIds] = useState<Set<string>>(new Set());
@@ -114,25 +138,55 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   }, []);
 
   useEffect(() => {
-    function closeRequestMenus(event: PointerEvent) {
+    function closeMenus(event: PointerEvent) {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      requestListRef.current
-        ?.querySelectorAll<HTMLDetailsElement>("details[open]")
-        .forEach((menu) => {
-          if (!menu.contains(target)) menu.removeAttribute("open");
-        });
+      document.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((menu) => {
+        if (!menu.contains(target)) menu.removeAttribute("open");
+      });
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      document
+        .querySelectorAll<HTMLDetailsElement>("details[open]")
+        .forEach((menu) => menu.removeAttribute("open"));
     }
 
-    document.addEventListener("pointerdown", closeRequestMenus);
-    return () => document.removeEventListener("pointerdown", closeRequestMenus);
+    document.addEventListener("pointerdown", closeMenus);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenus);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {
     let active = true;
     workspaceApi
       .list(user.id)
-      .then((items) => {
+      .then(async (items) => {
+        if (!active) return;
+        if (!items.length && !sampleAlreadySeeded(user.id)) {
+          try {
+            items = [await seedSampleWorkspace(user.id)];
+            toast.success("Te preparamos un workspace de ejemplo", {
+              description: "Abre una petición y pulsa Enviar para ver una respuesta real.",
+            });
+          } catch {
+            /* si falla el ejemplo, se muestra el estado vacío normal */
+          }
+        }
         if (!active) return;
         setWorkspaces(items);
         setActiveWorkspaceId(items[0]?.id ?? "");
@@ -169,6 +223,18 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         setOpenRequestIds(items[0] ? [items[0].id] : []);
       })
       .catch((cause) => active && setError(String(cause)));
+    return () => {
+      active = false;
+    };
+  }, [activeWorkspaceId, user.id]);
+
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+    let active = true;
+    requestFlowApi
+      .list(user.id, activeWorkspaceId)
+      .then((items) => active && setFlowVariables(collectFlowVariables(items)))
+      .catch(() => active && setFlowVariables([]));
     return () => {
       active = false;
     };
@@ -481,6 +547,58 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     event.preventDefault(); if (!requestToMove) return; const folderId = String(new FormData(event.currentTarget).get("folderId") ?? "") || null;
     try { const moved = await savedRequestApi.move(user.id, requestToMove.id, folderId); setRequests((items) => items.map((item) => item.id === moved.id ? moved : item)); setRequestToMove(null); toast.success("Petición movida"); } catch (cause) { toast.error("No se pudo mover", { description: String(cause) }); }
   }
+  const statusById = useMemo(() => {
+    const map = new Map<string, "ok" | "error">();
+    for (const entry of history) {
+      if (!entry.requestId || map.has(entry.requestId)) continue;
+      map.set(entry.requestId, !entry.error && entry.status !== null && entry.status < 400 ? "ok" : "error");
+    }
+    return map;
+  }, [history]);
+
+  const lastBodyByRequestId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of history) {
+      if (entry.requestId && !map.has(entry.requestId) && entry.responseBody) map.set(entry.requestId, entry.responseBody);
+    }
+    return map;
+  }, [history]);
+
+  async function saveAllDirtyRequests() {
+    for (const id of dirtyRequestIds) {
+      if (!((await requestSavers.current.get(id)?.()) ?? true)) return false;
+    }
+    return true;
+  }
+
+  async function folderToFlow(folder: RequestFolder) {
+    if (!activeWorkspace) return;
+    const ids = requests.filter((item) => item.folderId === folder.id).map((item) => item.id);
+    if (!ids.length) {
+      toast.warning("La carpeta está vacía", { description: "Añade peticiones para convertirla en un Flow." });
+      return;
+    }
+    try {
+      if (!(await saveAllDirtyRequests())) return;
+      const byId = new Map(requests.map((item) => [item.id, item]));
+      let summary: ReturnType<typeof suggestExtractions> | null = null;
+      const flow = await createFlowFromRequests(user.id, activeWorkspace.id, folder.name, ids, (graph) => {
+        summary = suggestExtractions(graph, byId, variables.map((item) => item.key), (requestId) => lastBodyByRequestId.get(requestId));
+        return summary.graph;
+      });
+      setIntroFlowId(flow.id);
+      setMainView("flows");
+      const chained = (summary as ReturnType<typeof suggestExtractions> | null)?.added.length ?? 0;
+      toast.success(`Flow creado con ${ids.length} pasos`, {
+        description: chained
+          ? `${chained} variable${chained > 1 ? "s" : ""} encadenada${chained > 1 ? "s" : ""} automáticamente.`
+          : "Pulsa «Sugerir variables» cuando tus peticiones usen {{variables}} de pasos anteriores.",
+      });
+    } catch (cause) {
+      toast.error("No se pudo crear el Flow", { description: String(cause) });
+    }
+  }
+
   async function recordExecution(result: { method: string; resolvedUrl: string; response?: import("@/features/requests/request-client").HttpResponse; error?: string }) {
     if (!activeWorkspace || !activeRequest) return;
     try { const entry = await requestHistoryApi.record({ userId: user.id, workspaceId: activeWorkspace.id, requestId: activeRequest.id, requestName: activeRequest.name, method: result.method, resolvedUrl: result.resolvedUrl, status: result.response?.status ?? null, statusText: result.response?.statusText ?? "", durationMs: result.response?.durationMs ?? null, sizeBytes: result.response?.sizeBytes ?? null, responseHeaders: JSON.stringify(result.response?.headers ?? []), responseBody: result.response?.body ?? "", error: result.error ?? null }); setHistory((items) => [entry, ...items].slice(0, 200)); } catch (cause) { toast.error("No se pudo guardar el historial", { description: String(cause) }); }
@@ -521,6 +639,16 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     }
   }
 
+  function mergeVariable(saved: EnvironmentVariable) {
+    if (saved.environmentId !== activeEnvironmentId) return;
+    setVariables((items) => {
+      const exists = items.some((item) => item.id === saved.id);
+      return exists
+        ? items.map((item) => (item.id === saved.id ? saved : item))
+        : [...items, saved];
+    });
+  }
+
   async function removeVariable(variableId: string) {
     try {
       await workspaceApi.removeVariable(user.id, variableId);
@@ -555,6 +683,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   }
 
   async function openRequest(request: SavedRequest) {
+    setIntroFlowId(undefined);
     if (request.id !== activeRequestId && !(await saveOpenRequest())) return;
     setOpenRequestIds((ids) => ids.includes(request.id) ? ids : [...ids, request.id]);
     setActiveRequestId(request.id);
@@ -570,7 +699,8 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   }
 
   async function leaveRequestView(view: MainView) {
-    if (!(await saveOpenRequest())) return;
+    setIntroFlowId(undefined);
+    if (!(await saveAllDirtyRequests())) return;
     setMainView(view);
   }
 
@@ -607,28 +737,17 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   }
 
   return (
-    <div className="grid h-screen min-h-0 grid-cols-[290px_minmax(0,1fr)] overflow-hidden bg-[#0b0715] text-foreground max-md:grid-cols-1">
-      <aside className="flex h-full min-h-0 flex-col border-r border-white/[0.06] bg-[#0d0818]/95 max-md:hidden">
-        <div className="flex h-[70px] items-center gap-3 border-b border-white/[0.06] px-4">
-          <Image src="/flux-icon.png" alt="" width={34} height={34} />
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-2">
-              <p className="truncate font-sans text-sm font-semibold text-white">
-                Flux
-              </p>
-              {systemVersion ? (
-                <span
-                  className="shrink-0 rounded-md border border-violet-300/10 bg-violet-400/[0.07] px-1.5 py-0.5 font-mono text-[8px] leading-none tracking-[0.04em] text-violet-200/65"
-                  title={`Versión ${systemVersion}`}
-                >
-                  v{systemVersion}
-                </span>
-              ) : null}
-            </div>
-          </div>
+    <div className="grid h-screen min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden bg-[var(--flux-bg)] text-foreground max-md:grid-cols-1">
+      <aside className="flex h-full min-h-0 flex-col m-3 mr-0 rounded-xl bg-[var(--flux-panel-2)] ring-1 ring-[var(--flux-line)] max-md:hidden">
+        <div className="flex h-11 items-center gap-2 px-3">
+          <Image src="/flux-icon.png" alt="" width={22} height={22} />
+          <p className="font-sans text-sm font-semibold text-white">Flux</p>
+          {systemVersion ? (
+            <span className="font-mono text-[9px] text-muted-foreground/60" title={`Versión ${systemVersion}`}>v{systemVersion}</span>
+          ) : null}
         </div>
 
-        <div className="flex flex-1 flex-col overflow-y-auto p-3">
+        <div className="flex flex-1 flex-col overflow-y-auto p-2">
           <SectionTitle
             label="Peticiones"
             onAdd={() => { setRequestFolderId(null); setRequestForm(true); }}
@@ -636,99 +755,99 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
           />
           {activeWorkspace ? (
             <div ref={requestListRef} className="flex min-h-0 flex-1 flex-col">
-              <RequestTree folders={folders} requests={requests} activeRequestId={mainView === "request" ? activeRequestId : ""}
+              <RequestTree statusById={statusById} onFolderToFlow={(folder) => void folderToFlow(folder)} folders={folders} requests={requests} activeRequestId={mainView === "request" ? activeRequestId : ""}
                 onSelect={(request) => void openRequest(request)}
                 onNewRequest={(folderId) => { setRequestFolderId(folderId); setRequestForm(true); }}
                 onNewFolder={(parentId) => setFolderForm(parentId)} onRenameFolder={setFolderToRename} onDeleteFolder={setFolderToDelete}
                 onRequestMenu={(request, action) => { if (action === "rename") setRequestToRename(request); else if (action === "duplicate") void duplicateRequest(request); else if (action === "move") setRequestToMove(request); else setPendingRequestDelete(request); }} />
-              {false && requests.map((request) => (
-                <div
-                  key={request.id}
-                  className={`group flex h-9 w-full items-center rounded-lg border pr-1 ${mainView === "request" && activeRequestId === request.id ? "border-violet-400/15 bg-violet-500/10 text-violet-100" : "border-transparent text-muted-foreground hover:bg-white/[0.035] hover:text-white"}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveRequestId(request.id);
-                      setMainView("request");
-                    }}
-                    className="flex min-w-0 flex-1 items-center gap-2 px-2.5 text-left text-xs"
-                  >
-                    <span
-                      className={`w-10 shrink-0 font-mono text-[9px] font-bold ${methodColor(request.method)}`}
-                    >
-                      {request.method}
-                    </span>
-                    <span className="truncate">{request.name}</span>
-                  </button>
-                  <details className="relative shrink-0">
-                    <summary
-                      aria-label={`Acciones de ${request.name}`}
-                      title="Más acciones"
-                      className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-muted-foreground/55 opacity-0 transition hover:bg-white/5 hover:text-white focus:opacity-100 group-hover:opacity-100 [&::-webkit-details-marker]:hidden"
-                    >
-                      <MoreVertical size={14} />
-                    </summary>
-                    <div className="absolute top-8 right-0 z-50 w-40 overflow-hidden rounded-xl border border-white/10 bg-[#181022] p-1.5 shadow-2xl shadow-black/50">
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.currentTarget
-                            .closest("details")
-                            ?.removeAttribute("open");
-                          setRequestToRename(request);
-                        }}
-                        className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-muted-foreground hover:bg-violet-400/10 hover:text-violet-200"
-                      >
-                        <Pencil size={13} /> Editar nombre
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.currentTarget
-                            .closest("details")
-                            ?.removeAttribute("open");
-                          void duplicateRequest(request);
-                        }}
-                        className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-muted-foreground hover:bg-violet-400/10 hover:text-violet-200"
-                      >
-                        <Copy size={13} /> Duplicar
-                      </button>
-                      <div className="my-1 h-px bg-white/[0.06]" />
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.currentTarget
-                            .closest("details")
-                            ?.removeAttribute("open");
-                          setPendingRequestDelete(request);
-                        }}
-                        className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-rose-300/80 hover:bg-rose-400/10 hover:text-rose-200"
-                      >
-                        <Trash2 size={13} /> Eliminar
-                      </button>
-                    </div>
-                  </details>
-                </div>
-              ))}
-              {false && !requests.length ? (
-                <div className="my-auto px-5 py-10 text-center">
-                  <FileJson2
-                    size={22}
-                    className="mx-auto text-muted-foreground/45"
-                  />
-                  <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                    No hay peticiones guardadas en {activeWorkspace?.name}.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setRequestForm(true)}
-                    className="mt-4 text-xs font-medium text-violet-300 hover:text-violet-200"
-                  >
-                    Crear primera petición
-                  </button>
-                </div>
-              ) : null}
+              {/*{false && requests.map((request) => (*/}
+              {/*  <div*/}
+              {/*    key={request.id}*/}
+              {/*    className={`group flex h-9 w-full items-center rounded-lg border pr-1 ${mainView === "request" && activeRequestId === request.id ? "border-violet-400/15 bg-violet-500/10 text-violet-100" : "border-transparent text-muted-foreground hover:bg-white/[0.035] hover:text-white"}`}*/}
+              {/*  >*/}
+              {/*    <button*/}
+              {/*      type="button"*/}
+              {/*      onClick={() => {*/}
+              {/*        setActiveRequestId(request.id);*/}
+              {/*        setMainView("request");*/}
+              {/*      }}*/}
+              {/*      className="flex min-w-0 flex-1 items-center gap-2 px-2.5 text-left text-xs"*/}
+              {/*    >*/}
+              {/*      <span*/}
+              {/*        className={`w-10 shrink-0 font-mono text-[9px] font-bold ${methodColor(request.method)}`}*/}
+              {/*      >*/}
+              {/*        {request.method}*/}
+              {/*      </span>*/}
+              {/*      <span className="truncate">{request.name}</span>*/}
+              {/*    </button>*/}
+              {/*    <details className="relative shrink-0">*/}
+              {/*      <summary*/}
+              {/*        aria-label={`Acciones de ${request.name}`}*/}
+              {/*        title="Más acciones"*/}
+              {/*        className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-muted-foreground/55 opacity-0 transition hover:bg-white/5 hover:text-white focus:opacity-100 group-hover:opacity-100 [&::-webkit-details-marker]:hidden"*/}
+              {/*      >*/}
+              {/*        <MoreVertical size={14} />*/}
+              {/*      </summary>*/}
+              {/*      <div className="absolute top-8 right-0 z-50 w-40 overflow-hidden rounded-xl border border-white/10 bg-[#181022] p-1.5 shadow-2xl shadow-black/50">*/}
+              {/*        <button*/}
+              {/*          type="button"*/}
+              {/*          onClick={(event) => {*/}
+              {/*            event.currentTarget*/}
+              {/*              .closest("details")*/}
+              {/*              ?.removeAttribute("open");*/}
+              {/*            setRequestToRename(request);*/}
+              {/*          }}*/}
+              {/*          className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-muted-foreground hover:bg-violet-400/10 hover:text-violet-200"*/}
+              {/*        >*/}
+              {/*          <Pencil size={13} /> Editar nombre*/}
+              {/*        </button>*/}
+              {/*        <button*/}
+              {/*          type="button"*/}
+              {/*          onClick={(event) => {*/}
+              {/*            event.currentTarget*/}
+              {/*              .closest("details")*/}
+              {/*              ?.removeAttribute("open");*/}
+              {/*            void duplicateRequest(request);*/}
+              {/*          }}*/}
+              {/*          className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-muted-foreground hover:bg-violet-400/10 hover:text-violet-200"*/}
+              {/*        >*/}
+              {/*          <Copy size={13} /> Duplicar*/}
+              {/*        </button>*/}
+              {/*        <div className="my-1 h-px bg-white/[0.06]" />*/}
+              {/*        <button*/}
+              {/*          type="button"*/}
+              {/*          onClick={(event) => {*/}
+              {/*            event.currentTarget*/}
+              {/*              .closest("details")*/}
+              {/*              ?.removeAttribute("open");*/}
+              {/*            setPendingRequestDelete(request);*/}
+              {/*          }}*/}
+              {/*          className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-rose-300/80 hover:bg-rose-400/10 hover:text-rose-200"*/}
+              {/*        >*/}
+              {/*          <Trash2 size={13} /> Eliminar*/}
+              {/*        </button>*/}
+              {/*      </div>*/}
+              {/*    </details>*/}
+              {/*  </div>*/}
+              {/*))}*/}
+              {/*{false && !requests.length ? (*/}
+              {/*  <div className="my-auto px-5 py-10 text-center">*/}
+              {/*    <FileJson2*/}
+              {/*      size={22}*/}
+              {/*      className="mx-auto text-muted-foreground/45"*/}
+              {/*    />*/}
+              {/*    <p className="mt-3 text-xs leading-5 text-muted-foreground">*/}
+              {/*      No hay peticiones guardadas en {activeWorkspace?.name}.*/}
+              {/*    </p>*/}
+              {/*    <button*/}
+              {/*      type="button"*/}
+              {/*      onClick={() => setRequestForm(true)}*/}
+              {/*      className="mt-4 text-xs font-medium text-violet-300 hover:text-violet-200"*/}
+              {/*    >*/}
+              {/*      Crear primera petición*/}
+              {/*    </button>*/}
+              {/*  </div>*/}
+              {/*) : null}*/}
             </div>
           ) : (
             <p className="mt-5 px-3 text-xs leading-5 text-muted-foreground">
@@ -737,57 +856,33 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
           )}
         </div>
 
-        <div className="border-t border-white/[0.06] p-3">
-          <button onClick={() => setHistoryOpen((value) => !value)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-white/[0.035] hover:text-white">
-            <Clock3 size={14} /> Historial <span className="ml-auto text-[9px] opacity-60">{history.length}</span>
+        <div className="flex items-center gap-0.5 p-2">
+          <button onClick={() => setHistoryOpen((value) => !value)} className="flex h-7 flex-1 items-center gap-2 rounded-md px-2 text-xs text-muted-foreground hover:bg-white/[0.05] hover:text-white">
+            <Clock3 size={13} /> Historial <span className="ml-auto text-[9px] opacity-60">{history.length}</span>
           </button>
-          <button
-            onClick={onLogout}
-            className="mt-1 flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-muted-foreground hover:bg-white/[0.035] hover:text-white"
-          >
-            <LogOut size={14} /> Cerrar sesión
+          <button onClick={onLogout} title="Cerrar sesión" aria-label="Cerrar sesión" className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.05] hover:text-white">
+            <LogOut size={13} />
           </button>
         </div>
       </aside>
 
       <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        <header className="flex h-[70px] min-w-0 shrink-0 items-center justify-between gap-2 overflow-hidden border-b border-white/[0.06] bg-[#100a1d]/80 px-3 xl:px-5">
-          <div className="flex min-w-0 flex-1 items-center gap-1 text-xs xl:gap-2">
-            <Box size={15} className="shrink-0 text-violet-400 max-lg:hidden" />
+        <header className="mx-3 mt-3 flex h-11 min-w-0 shrink-0 items-center justify-between gap-2 rounded-xl bg-[var(--flux-panel-2)] px-3 ring-1 ring-[var(--flux-line)]">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
             <WorkspaceSelect
               value={activeWorkspaceId}
               onChange={changeWorkspace}
               items={workspaces}
             />
-            <button
-              type="button"
-              onClick={() => setWorkspaceForm(true)}
-              aria-label="Crear workspace"
-              className="grid size-8 shrink-0 place-items-center rounded-lg text-violet-300 hover:bg-violet-400/10"
-            >
-              <Plus size={14} />
-            </button>
+            <IconButton label="Crear workspace" onClick={() => setWorkspaceForm(true)}><Plus size={14} /></IconButton>
             {activeWorkspace ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setWorkspaceToRename(activeWorkspace)}
-                  aria-label={`Renombrar workspace ${activeWorkspace.name}`}
-                  title="Renombrar workspace"
-                  className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-violet-400/10 hover:text-violet-300"
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPendingWorkspaceDelete(activeWorkspace)}
-                  aria-label={`Eliminar workspace ${activeWorkspace.name}`}
-                  title="Eliminar workspace"
-                  className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-rose-400/10 hover:text-rose-300"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </>
+              <details className="relative">
+                <summary aria-label="Más acciones del workspace" title="Más acciones" className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-zinc-300 transition bg-white/[0.05] ring-1 ring-white/[0.08] hover:bg-white/[0.1] hover:ring-white/[0.16] active:scale-95 [&::-webkit-details-marker]:hidden"><MoreHorizontal size={14} /></summary>
+                <div className="absolute top-8 left-0 z-50 flex w-40 flex-col gap-0.5 rounded-lg border border-white/10 bg-[#181022] p-1 shadow-2xl" onClick={(event) => event.currentTarget.closest("details")?.removeAttribute("open")}>
+                  <button onClick={() => setWorkspaceToRename(activeWorkspace)} className="menu-item"><Pencil size={13} /> Renombrar</button>
+                  <button onClick={() => setPendingWorkspaceDelete(activeWorkspace)} className="menu-item text-rose-300"><Trash2 size={13} /> Eliminar</button>
+                </div>
+              </details>
             ) : null}
             <WorkspaceTransfer
               variant="toolbar"
@@ -796,7 +891,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               onImported={(result) => void workspaceImported(result)}
             />
           </div>
-          <div className="flex min-w-0 shrink-0 items-center gap-1 xl:gap-2">
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5">
             {activeWorkspace ? (
               <>
                 <SelectControl
@@ -805,42 +900,23 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                   placeholder="Sin environment"
                   items={environments}
                 />
-                <button
-                  type="button"
-                  onClick={() => setEnvironmentForm(true)}
-                  aria-label="Crear environment"
-                  className="grid size-8 shrink-0 place-items-center rounded-lg text-violet-300 hover:bg-violet-400/10"
-                >
-                  <Plus size={14} />
-                </button>
+                <IconButton label="Crear environment" onClick={() => setEnvironmentForm(true)}><Plus size={14} /></IconButton>
                 {activeEnvironment ? (
-                  <button
-                    type="button"
-                    onClick={() => void leaveRequestView("environment")}
-                    title="Editar environment"
-                    aria-label="Editar environment"
-                    className={`hidden h-9 shrink-0 items-center gap-2 rounded-lg border px-2.5 text-xs sm:inline-flex 2xl:px-3 ${mainView === "environment" ? "border-violet-400/25 bg-violet-500/15 text-violet-100" : "border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white"}`}
-                  >
-                    <Pencil size={13} />
-                    <span className="hidden 2xl:inline">
-                      Editar environment
-                    </span>
-                  </button>
+                  <IconButton label="Editar environment" active={mainView === "environment"} onClick={() => void leaveRequestView("environment")}><Pencil size={13} /></IconButton>
                 ) : null}
+                <button type="button" onClick={() => void leaveRequestView("flows")} title="Abrir Flow" aria-label="Abrir Flow" className={`mx-1 inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${mainView === "flows" ? "bg-[var(--flux-primary-soft)] text-white ring-1 ring-[var(--flux-primary-border)]" : "text-zinc-200 bg-white/[0.05] ring-1 ring-white/[0.08] hover:bg-white/[0.1] hover:ring-white/[0.16] active:scale-95"}`}><Workflow size={14} /><span className="hidden sm:inline">Flow</span></button>
               </>
             ) : null}
-            {activeWorkspace ? (
-              <button type="button" onClick={() => void leaveRequestView("flows")} title="Abrir Flow" aria-label="Abrir Flow" className={`relative inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-all ${mainView === "flows" ? "border-violet-300/50 bg-violet-500/25 text-white shadow-[0_0_22px_rgba(139,92,246,0.2)]" : "border-violet-300/25 bg-violet-500/10 text-violet-200 hover:border-violet-300/45 hover:bg-violet-500/20 hover:text-white"}`}><Workflow size={15} /><span className="hidden sm:inline">Flow</span></button>
-            ) : null}
-            <button type="button" onClick={() => void leaveRequestView("settings")} title="Settings" aria-label="Abrir settings" className={`relative hidden size-9 shrink-0 place-items-center rounded-lg border xl:grid ${mainView === "settings" ? "border-violet-400/25 bg-violet-500/15 text-violet-200" : "border-white/[0.07] text-muted-foreground hover:bg-white/5 hover:text-white"}`}><Settings size={15} /></button>
-            <div className="grid size-9 shrink-0 place-items-center rounded-full bg-violet-500/15 text-xs font-semibold text-violet-200">
+            <ThemePicker />
+            <IconButton label="Abrir settings" active={mainView === "settings"} onClick={() => void leaveRequestView("settings")}><Settings size={14} /></IconButton>
+            <div className="ml-1 grid size-6 shrink-0 place-items-center rounded-full bg-white/[0.08] text-[10px] font-semibold text-white">
               {user.name.slice(0, 1).toUpperCase()}
             </div>
           </div>
         </header>
 
         <main
-          className={`relative flex min-h-0 flex-1 items-center justify-center p-3 xl:p-6 ${mainView === "request" ? "overflow-hidden" : "overflow-y-auto"}`}
+          className={`relative flex min-h-0 flex-1 items-center justify-center p-3 ${mainView === "request" ? "overflow-hidden" : "overflow-y-auto"}`}
         >
           {loading ? (
             <p className="text-sm text-muted-foreground">
@@ -856,6 +932,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                 tabs={openRequestIds.map((id) => requests.find((item) => item.id === id)).filter((item): item is SavedRequest => Boolean(item))}
                 activeId={activeRequestId}
                 dirtyIds={dirtyRequestIds}
+                statusById={statusById}
                 onSelect={(id) => { const request = requests.find((item) => item.id === id); if (request) void openRequest(request); }}
                 onClose={(id) => void closeRequestTab(id)}
                 onNew={() => setRequestForm(true)}
@@ -869,6 +946,11 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                       userId={user.id}
                       workspace={activeWorkspace}
                       variables={activeEnvironment ? variables : []}
+                      flowVariables={flowVariables}
+                      environments={environments}
+                      activeEnvironmentId={activeEnvironmentId}
+                      onVariableSaved={mergeVariable}
+                      onEnvironmentCreated={(created) => { setEnvironments((items) => [...items, created]); if (!activeEnvironmentId) setActiveEnvironmentId(created.id); }}
                       request={request}
                       onSaved={(saved) => setRequests((items) => items.map((item) => item.id === saved.id ? saved : item))}
                       onDirtyChange={updateRequestDirty}
@@ -907,6 +989,10 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               workspace={activeWorkspace}
               requests={requests}
               variables={activeEnvironment ? variables : []}
+              initialFlowId={introFlowId}
+              lastBodyByRequestId={lastBodyByRequestId}
+              onRequestUpdated={(saved) => setRequests((items) => items.map((item) => (item.id === saved.id ? saved : item)))}
+              onFlowsChange={handleFlowsChange}
             />
           ) : null}
           {mainView === "settings" ? <SettingsView currentVersion={systemVersion} userId={user.id} workspace={activeWorkspace} onWorkspaceImported={(result) => void workspaceImported(result)} /> : null}
@@ -915,7 +1001,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               {error}
             </p>
           ) : null}
-          {historyOpen && activeWorkspace ? <HistoryDrawer history={history} onClose={() => setHistoryOpen(false)} onClear={async () => { await requestHistoryApi.clear(user.id, activeWorkspace.id); setHistory([]); }} /> : null}
+          {historyOpen && activeWorkspace ? <HistoryDrawer history={history} activeRequest={activeRequest} onClose={() => setHistoryOpen(false)} onClear={async () => { await requestHistoryApi.clear(user.id, activeWorkspace.id); setHistory([]); }} /> : null}
         </main>
       </div>
 
@@ -972,6 +1058,22 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
           onConfirm={deleteEnvironment}
         />
       ) : null}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        requests={requests}
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspaceId}
+        environments={environments}
+        activeEnvironmentId={activeEnvironmentId}
+        onOpenRequest={(request) => void openRequest(request)}
+        onNewRequest={() => { setRequestFolderId(null); setRequestForm(true); }}
+        onNewFolder={() => setFolderForm(null)}
+        onOpenView={(view) => void leaveRequestView(view)}
+        onOpenHistory={() => setHistoryOpen(true)}
+        onChangeWorkspace={changeWorkspace}
+        onChangeEnvironment={changeEnvironment}
+      />
       {requestForm ? (
         <NameDialog
           title="Nueva petición"
@@ -1014,10 +1116,12 @@ function SimpleConfirm({ title, description, onCancel, onConfirm }: { title: str
   return <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-4"><div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#151021] p-5"><h2 className="font-semibold text-white">{title}</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p><div className="mt-5 flex justify-end gap-2"><button onClick={onCancel} className="rounded-lg px-4 py-2 text-xs text-muted-foreground">Cancelar</button><button onClick={onConfirm} className="rounded-lg bg-rose-500/15 px-4 py-2 text-xs text-rose-200">Eliminar</button></div></div></div>;
 }
 
-function HistoryDrawer({ history, onClose, onClear }: { history: RequestHistoryEntry[]; onClose: () => void; onClear: () => Promise<void> }) {
+function HistoryDrawer({ history: allHistory, activeRequest, onClose, onClear }: { history: RequestHistoryEntry[]; activeRequest: SavedRequest | null; onClose: () => void; onClear: () => Promise<void> }) {
+  const [onlyActive, setOnlyActive] = useState(Boolean(activeRequest));
+  const history = onlyActive && activeRequest ? allHistory.filter((entry) => entry.requestId === activeRequest.id) : allHistory;
   const [selected, setSelected] = useState<RequestHistoryEntry | null>(history[0] ?? null);
   return <section className="absolute inset-x-0 bottom-0 z-40 flex h-[48%] min-h-72 flex-col border-t border-violet-400/20 bg-[#0d0818]/[0.98] shadow-[0_-24px_70px_rgba(0,0,0,.45)] backdrop-blur-xl">
-    <header className="flex h-11 shrink-0 items-center border-b border-white/[0.07] px-4"><Clock3 size={14} className="text-violet-300"/><h2 className="ml-2 text-xs font-semibold text-white">Historial de ejecuciones</h2><span className="ml-2 text-[9px] text-muted-foreground">últimas 200</span><button onClick={() => void onClear()} className="ml-auto text-[10px] text-rose-300/70 hover:text-rose-200">Limpiar</button><button onClick={onClose} className="ml-4 text-xs text-muted-foreground">Cerrar</button></header>
+    <header className="flex h-11 shrink-0 items-center border-b border-white/[0.07] px-4"><Clock3 size={14} className="text-violet-300"/><h2 className="ml-2 text-xs font-semibold text-white">Historial de ejecuciones</h2><span className="ml-2 text-[9px] text-muted-foreground">últimas 200</span>{activeRequest ? <button onClick={() => { setOnlyActive((value) => !value); setSelected(null); }} className={`ml-3 h-6 rounded-md px-2 text-[10px] ring-1 ${onlyActive ? "bg-white/[0.1] text-white ring-white/20" : "text-muted-foreground ring-white/10 hover:text-white"}`}>Solo {activeRequest.name}</button> : null}<button onClick={() => void onClear()} className="ml-auto text-[10px] text-rose-300/70 hover:text-rose-200">Limpiar</button><button onClick={onClose} className="ml-4 text-xs text-muted-foreground">Cerrar</button></header>
     <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)]"><div className="overflow-y-auto border-r border-white/[0.07] p-2">{history.map((entry) => <button key={entry.id} onClick={() => setSelected(entry)} className={`mb-1 flex w-full items-start gap-2 rounded-lg p-2 text-left ${selected?.id === entry.id ? "bg-violet-500/12" : "hover:bg-white/[0.035]"}`}><span className="w-12 font-mono text-[9px] font-bold text-violet-300">{entry.method}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs text-white/85">{entry.requestName}</span><span className="block truncate text-[9px] text-muted-foreground">{entry.status ?? "ERR"} · {entry.durationMs ?? "—"} ms · {entry.createdAt}</span></span></button>)}{!history.length ? <p className="p-6 text-center text-xs text-muted-foreground">Envía una petición y aparecerá aquí.</p> : null}</div>
       <div className="min-w-0 overflow-auto p-4">{selected ? <><div className="flex flex-wrap items-center gap-3"><span className={selected.error ? "text-rose-300" : "text-emerald-300"}>{selected.status ?? "Error"}</span><span className="font-mono text-[10px] text-muted-foreground">{selected.durationMs ?? "—"} ms · {selected.sizeBytes ?? 0} B</span></div><p className="mt-2 break-all font-mono text-[10px] text-violet-200/75">{selected.resolvedUrl}</p><pre className="mt-4 min-h-32 whitespace-pre-wrap break-words rounded-xl border border-white/[0.06] bg-black/20 p-4 font-mono text-[11px] leading-5 text-slate-300">{selected.error ?? (selected.responseBody || "Respuesta vacía")}</pre></> : null}</div></div>
   </section>;
@@ -1029,13 +1133,21 @@ function MoveRequestDialog({ request, folders, onClose, onSubmit }: { request: S
 
 function SectionTitle({ label, onAdd, onAddFolder }: { label: string; onAdd: () => void; onAddFolder: () => void }) {
   return (
-    <div className="flex items-center justify-between px-2 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+    <div className="flex items-center justify-between pr-0.5 pl-2 text-[10px] font-medium tracking-[0.12em] text-muted-foreground/70 uppercase">
       <span>{label}</span>
-      <div className="flex items-center gap-1">
-        <button onClick={onAddFolder} title="Nueva carpeta" className="grid size-7 place-items-center rounded-md border border-violet-300/10 bg-violet-500/[0.06] text-violet-300 transition hover:border-violet-300/25 hover:bg-violet-400/15" aria-label="Crear carpeta"><FolderPlus size={14} strokeWidth={1.8} /></button>
-        <button onClick={onAdd} title="Nueva petición" className="grid size-7 place-items-center rounded-md text-violet-300 hover:bg-violet-400/10" aria-label={`Crear ${label}`}><Plus size={14} /></button>
+      <div className="flex items-center">
+        <button onClick={onAddFolder} title="Nueva carpeta" className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white" aria-label="Crear carpeta"><FolderPlus size={13} strokeWidth={1.8} /></button>
+        <button onClick={onAdd} title="Nueva petición" className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white" aria-label={`Crear ${label}`}><Plus size={13} /></button>
       </div>
     </div>
+  );
+}
+
+function IconButton({ label, onClick, active, children }: { label: string; onClick: () => void; active?: boolean; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} title={label} aria-label={label} className={`grid size-7 shrink-0 place-items-center rounded-md transition ${active ? "bg-[var(--flux-primary-soft)] text-white ring-1 ring-[var(--flux-primary-border)]" : "text-zinc-300 bg-white/[0.05] ring-1 ring-white/[0.08] hover:bg-white/[0.1] hover:ring-white/[0.16] active:scale-95"}`}>
+      {children}
+    </button>
   );
 }
 
@@ -1055,7 +1167,7 @@ function SelectControl({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-[clamp(108px,16vw,190px)] appearance-none truncate rounded-lg border border-white/[0.07] bg-[#171024] pr-8 pl-3 text-xs text-violet-100 outline-none focus:border-violet-400/40"
+        className="h-7 w-[clamp(96px,14vw,170px)] cursor-pointer appearance-none truncate rounded-md bg-white/[0.05] pr-6 pl-2.5 text-xs text-zinc-200 ring-1 ring-white/[0.08] outline-none transition hover:bg-white/[0.1] hover:ring-white/[0.16] focus:ring-[var(--flux-primary-border)]"
       >
         <option value="">{placeholder}</option>
         {items.map((item) => (
@@ -1065,8 +1177,8 @@ function SelectControl({
         ))}
       </select>
       <ChevronDown
-        size={13}
-        className="pointer-events-none absolute top-3 right-2.5 text-muted-foreground"
+        size={12}
+        className="pointer-events-none absolute top-2 right-2 text-zinc-400"
       />
     </label>
   );
@@ -1087,7 +1199,7 @@ function WorkspaceSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-[clamp(108px,16vw,190px)] appearance-none truncate rounded-lg border border-white/[0.07] bg-[#171024] pr-8 pl-3 text-xs font-medium text-white outline-none focus:border-violet-400/40"
+        className="h-7 w-[clamp(96px,14vw,170px)] cursor-pointer appearance-none truncate rounded-md bg-white/[0.05] pr-6 pl-2.5 text-xs font-medium text-white ring-1 ring-white/[0.08] outline-none transition hover:bg-white/[0.1] hover:ring-white/[0.16] focus:ring-[var(--flux-primary-border)]"
       >
         <option value="">Sin workspace</option>
         {items.map((item) => (
@@ -1097,8 +1209,8 @@ function WorkspaceSelect({
         ))}
       </select>
       <ChevronDown
-        size={13}
-        className="pointer-events-none absolute top-3 right-2.5 text-muted-foreground"
+        size={12}
+        className="pointer-events-none absolute top-2 right-2 text-zinc-400"
       />
     </label>
   );

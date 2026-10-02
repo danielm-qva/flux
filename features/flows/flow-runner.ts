@@ -8,17 +8,21 @@ import {
   savedRequestToConfig,
 } from "@/features/requests/prepare-http-request";
 import { getByPath } from "./get-by-path";
-import type { FlowGraph, FlowNode } from "./flow-client";
+import type { FlowAssertion, FlowGraph, FlowNode } from "./flow-client";
 
 export type FlowVar = { key: string; value: string };
 export type NodeStatus = "idle" | "running" | "success" | "error";
 
+export type AssertionResult = { id: string; label: string; passed: boolean; detail: string };
+
 export type NodeRun = {
   nodeId: string;
   status: "success" | "error";
+  assertions: AssertionResult[];
   response?: HttpResponse;
   error?: string;
-  extracted: FlowVar[];
+  /** `path` guarda de qué extracción salió el valor, para no confundirlo si luego se edita o se recrea. */
+  extracted: (FlowVar & { path?: string })[];
   warnings: string[];
 };
 
@@ -81,15 +85,21 @@ export function topologicalOrder(graph: FlowGraph): FlowNode[] {
 /**
  * Executes every node in topological order, accumulating variables extracted
  * from each response and feeding them (over the environment variables) into
- * later requests. Stops at the first HTTP error.
+ * later requests. Stops at the first failed request (network error or HTTP status >= 400).
  */
 export async function runFlow(
   graph: FlowGraph,
   requestsById: Map<string, SavedRequest>,
   envVariables: FlowVar[],
   onNodeStatus?: (nodeId: string, status: NodeStatus) => void,
+  options: { untilNodeId?: string } = {},
 ): Promise<FlowRunResult> {
-  const order = topologicalOrder(graph);
+  let order = topologicalOrder(graph);
+  if (options.untilNodeId) {
+    const needed = ancestorsOf(graph, options.untilNodeId);
+    needed.add(options.untilNodeId);
+    order = order.filter((node) => needed.has(node.id));
+  }
 
   for (const node of order) {
     if (!node.requestId || !requestsById.has(node.requestId)) {
@@ -113,7 +123,7 @@ export async function runFlow(
 
     try {
       const response = await executeHttpRequest({ ...prepared, timeoutMs: 30_000 });
-      const extracted: FlowVar[] = [];
+      const extracted: (FlowVar & { path?: string })[] = [];
       const warnings: string[] = [];
       const parsedBody = safeJson(response.body);
 
@@ -126,16 +136,38 @@ export async function runFlow(
           continue;
         }
         const flowVar = { key: variable, value: stringifyValue(value) };
-        extracted.push(flowVar);
+        extracted.push({ ...flowVar, path: extraction.path.trim() });
         flowVars.push(flowVar);
       }
 
-      runs.push({ nodeId: node.id, status: "success", response, extracted, warnings });
+      const assertions = evaluateAssertions(node.assertions ?? [], response, parsedBody);
+      const failed = assertions.filter((item) => !item.passed);
+      const expectsStatus = (node.assertions ?? []).some((item) => item.kind === "status");
+      const httpFailure = response.status >= 400 && !expectsStatus;
+
+      if (httpFailure || failed.length) {
+        runs.push({
+          nodeId: node.id,
+          status: "error",
+          response,
+          assertions,
+          error: httpFailure
+            ? `La petición respondió ${response.status} ${response.statusText}`.trim()
+            : `${failed.length} aserción${failed.length > 1 ? "es" : ""} no se cumpli${failed.length > 1 ? "eron" : "ó"}`,
+          extracted,
+          warnings,
+        });
+        onNodeStatus?.(node.id, "error");
+        return { runs, vars: flowVars, stoppedAt: node.id };
+      }
+
+      runs.push({ nodeId: node.id, status: "success", response, assertions, extracted, warnings });
       onNodeStatus?.(node.id, "success");
     } catch (cause) {
       runs.push({
         nodeId: node.id,
         status: "error",
+        assertions: [],
         error: String(cause),
         extracted: [],
         warnings: [],
@@ -160,4 +192,63 @@ function stringifyValue(value: unknown): string {
   if (value == null) return "";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function ancestorsOf(graph: FlowGraph, nodeId: string): Set<string> {
+  const parents = new Map<string, string[]>();
+  for (const edge of graph.edges) parents.set(edge.target, [...(parents.get(edge.target) ?? []), edge.source]);
+  const seen = new Set<string>();
+  const stack = [nodeId];
+  while (stack.length) {
+    for (const parent of parents.get(stack.pop()!) ?? []) {
+      if (!seen.has(parent)) {
+        seen.add(parent);
+        stack.push(parent);
+      }
+    }
+  }
+  return seen;
+}
+
+export function describeAssertion(assertion: FlowAssertion): string {
+  switch (assertion.kind) {
+    case "status":
+      return `status = ${assertion.value || "?"}`;
+    case "exists":
+      return `${assertion.path || "?"} existe`;
+    case "equals":
+      return `${assertion.path || "?"} = ${assertion.value}`;
+    case "time":
+      return `tiempo ≤ ${assertion.value || "?"} ms`;
+  }
+}
+
+function evaluateAssertions(
+  assertions: FlowAssertion[],
+  response: HttpResponse,
+  parsedBody: unknown,
+): AssertionResult[] {
+  return assertions.map((assertion) => {
+    const label = describeAssertion(assertion);
+    let passed = false;
+    let detail = "";
+    if (assertion.kind === "status") {
+      passed = response.status === Number(assertion.value);
+      detail = `respondió ${response.status}`;
+    } else if (assertion.kind === "time") {
+      passed = response.durationMs <= Number(assertion.value);
+      detail = `tardó ${response.durationMs} ms`;
+    } else {
+      const value = getByPath(parsedBody, assertion.path);
+      if (assertion.kind === "exists") {
+        passed = value !== undefined && value !== null;
+        detail = passed ? "encontrado" : "no encontrado";
+      } else {
+        const actual = value === undefined ? undefined : stringifyValue(value);
+        passed = actual === assertion.value;
+        detail = actual === undefined ? "no encontrado" : `valor: ${actual}`;
+      }
+    }
+    return { id: assertion.id, label, passed, detail };
+  });
 }

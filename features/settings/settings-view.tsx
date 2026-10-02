@@ -7,15 +7,35 @@ import { WorkspaceTransfer } from "@/features/workspaces/workspace-transfer";
 import type { Workspace } from "@/features/workspaces/workspace-client";
 import type { WorkspaceImport } from "@/features/workspaces/workspace-transfer-client";
 
-type ThemeId = "ultraviolet" | "arctic" | "amber";
-const THEMES: Array<{ id: ThemeId; name: string; description: string; colors: string[] }> = [
+export type ThemeId = "ultraviolet" | "arctic" | "amber" | "graphite" | "emerald" | "rose" | "blue";
+export const THEMES: Array<{ id: ThemeId; name: string; description: string; colors: string[] }> = [
   { id: "ultraviolet", name: "Ultravioleta", description: "Ciruela profunda con primary violeta.", colors: ["#0b0715", "#181022", "#7c3cff", "#c4b5fd"] },
   { id: "arctic", name: "Cian Ártico", description: "Azul petróleo con primary cian.", colors: ["#041116", "#0d2a34", "#0891b2", "#67e8f9"] },
   { id: "amber", name: "Ámbar Carbono", description: "Grafito profundo con primary ámbar.", colors: ["#0c0d0f", "#242117", "#d99a24", "#f8d27a"] },
+  { id: "graphite", name: "Grafito", description: "Gris neutro, sin color de más.", colors: ["#08090a", "#1c1f23", "#6b7280", "#d4d4d8"] },
+  { id: "emerald", name: "Esmeralda", description: "Verde bosque con primary esmeralda.", colors: ["#040b08", "#10261d", "#059669", "#6ee7b7"] },
+  { id: "rose", name: "Rosa", description: "Burdeos suave con primary rosa.", colors: ["#0d0609", "#2a1520", "#e11d48", "#fda4af"] },
+  { id: "blue", name: "Azul", description: "Medianoche con primary azul.", colors: ["#050813", "#141e42", "#3b6cf0", "#a5c0ff"] },
 ];
+
+export function applyTheme(id: ThemeId) {
+  document.documentElement.dataset.fluxTheme = id;
+  try { window.localStorage.setItem("flux.color-theme", id); } catch { /* sin almacenamiento */ }
+  window.dispatchEvent(new CustomEvent("flux-theme-change", { detail: id }));
+}
+
+export function applyContrast(high: boolean) {
+  if (high) document.documentElement.dataset.fluxContrast = "high";
+  else delete document.documentElement.dataset.fluxContrast;
+  try { window.localStorage.setItem("flux.contrast", high ? "high" : "normal"); } catch { /* sin almacenamiento */ }
+  window.dispatchEvent(new CustomEvent("flux-theme-change"));
+}
 
 export function ThemeRuntime() {
   useEffect(() => {
+    try {
+      if (window.localStorage.getItem("flux.contrast") === "high") document.documentElement.dataset.fluxContrast = "high";
+    } catch { /* sin almacenamiento */ }
     const saved = window.localStorage.getItem("flux.color-theme");
     document.documentElement.dataset.fluxTheme = saved === "coral" ? "amber" : THEMES.some((item) => item.id === saved) ? saved! : "ultraviolet";
   }, []);
@@ -31,6 +51,15 @@ export function SettingsView({ currentVersion, userId, workspace, onWorkspaceImp
   });
 
   useEffect(() => {
+    const onChange = (event: Event) => {
+      const next = (event as CustomEvent<ThemeId | undefined>).detail;
+      if (next) setTheme(next);
+    };
+    window.addEventListener("flux-theme-change", onChange);
+    return () => window.removeEventListener("flux-theme-change", onChange);
+  }, []);
+
+  useEffect(() => {
     document.documentElement.dataset.fluxTheme = theme;
     window.localStorage.setItem("flux.color-theme", theme);
   }, [theme]);
@@ -41,7 +70,7 @@ export function SettingsView({ currentVersion, userId, workspace, onWorkspaceImp
 
     <div className="mt-7 rounded-2xl border border-white/[0.07] bg-[#120c1e]/90 p-5">
       <div className="flex items-center justify-between"><div><h2 className="text-sm font-semibold text-white">Tema de color</h2><p className="mt-1 text-[11px] text-muted-foreground">Cambia el acento sin alterar la legibilidad del editor.</p></div><span className="rounded-full border border-white/[0.07] px-2.5 py-1 text-[9px] text-muted-foreground">Se guarda automáticamente</span></div>
-      <div className="mt-5 grid grid-cols-3 gap-3 max-lg:grid-cols-1">{THEMES.map((item) => <button key={item.id} type="button" onClick={() => setTheme(item.id)} className={`relative overflow-hidden rounded-xl border p-4 text-left transition ${theme === item.id ? "border-violet-400/35 bg-violet-500/[0.08]" : "border-white/[0.07] bg-black/10 hover:border-white/15"}`}>
+      <div className="mt-5 grid grid-cols-4 gap-3 max-xl:grid-cols-2 max-sm:grid-cols-1">{THEMES.map((item) => <button key={item.id} type="button" onClick={() => setTheme(item.id)} className={`relative overflow-hidden rounded-xl border p-4 text-left transition ${theme === item.id ? "border-violet-400/35 bg-violet-500/[0.08]" : "border-white/[0.07] bg-black/10 hover:border-white/15"}`}>
         <span className="flex gap-1.5">{item.colors.map((color) => <span key={color} className="h-6 flex-1 rounded-md" style={{ backgroundColor: color }} />)}</span><span className="mt-4 flex items-center justify-between"><span><span className="block text-xs font-medium text-white">{item.name}</span><span className="mt-1 block text-[10px] text-muted-foreground">{item.description}</span></span>{theme === item.id ? <span className="grid size-6 place-items-center rounded-full bg-violet-500 text-white"><Check size={12} /></span> : null}</span>
       </button>)}</div>
     </div>

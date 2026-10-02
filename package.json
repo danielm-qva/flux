@@ -1,11 +1,12 @@
 {
   "name": "flux",
-  "version": "3.2.0",
+  "version": "3.5.0",
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3025",
     "build": "npm run build:web",
     "build:web": "next build && node scripts/verify-web-assets.mjs",
+    "build:mac": "node scripts/build-mac.mjs",
     "build:windows": "node scripts/build-windows.mjs",
     "start": "next start",
     "lint": "eslint",

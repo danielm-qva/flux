@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-ui), var(--font-geist-sans);
   --font-mono: var(--font-mono);
-  --font-heading: var(--font-mono);
+  --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -86,27 +86,36 @@
 
 :root,
 html[data-flux-theme="ultraviolet"] {
+  --flux-bg: #09060f;
+  --flux-panel: #1f1434;
+  --flux-panel-2: #140d21;
   --flux-canvas: #0b0715;
   --flux-sidebar: #0d0818;
   --flux-header: #100a1d;
   --flux-surface: #120c1e;
-  --flux-raised: #181022;
-  --flux-dialog: #151020;
+  --flux-raised: #2b1b46;
+  --flux-dialog: #24163b;
   --flux-primary: #7c3cff;
   --flux-primary-hover: #8b5cf6;
   --flux-primary-text: #c4b5fd;
   --flux-primary-soft: rgb(124 60 255 / 14%);
   --flux-primary-border: rgb(196 181 253 / 27%);
   --flux-glow: rgb(105 48 207 / 24%);
+  --flux-well: #100a1a;
+  --muted-foreground: #afa6bf;
+  --flux-line: rgb(255 255 255 / 12%);
 }
 
 html[data-flux-theme="arctic"] {
+  --flux-bg: #050e10;
+  --flux-panel: #102f37;
+  --flux-panel-2: #0a1f24;
   --flux-canvas: #041116;
   --flux-sidebar: #06171d;
   --flux-header: #071c24;
   --flux-surface: #09212a;
-  --flux-raised: #0d2a34;
-  --flux-dialog: #0a222b;
+  --flux-raised: #16404b;
+  --flux-dialog: #12363f;
   --flux-primary: #0891b2;
   --flux-primary-hover: #06b6d4;
   --flux-primary-text: #67e8f9;
@@ -125,15 +134,21 @@ html[data-flux-theme="arctic"] {
   --sidebar: #06171d;
   --sidebar-primary: #0891b2;
   --sidebar-accent: #0b2b35;
+  --flux-well: #08181c;
+  --muted-foreground: #a4bbc1;
+  --flux-line: rgb(255 255 255 / 12%);
 }
 
 html[data-flux-theme="amber"] {
+  --flux-bg: #0c0b08;
+  --flux-panel: #2c261c;
+  --flux-panel-2: #1c1912;
   --flux-canvas: #0c0d0f;
   --flux-sidebar: #11110f;
   --flux-header: #161510;
   --flux-surface: #1c1a13;
-  --flux-raised: #242117;
-  --flux-dialog: #201e16;
+  --flux-raised: #3b3426;
+  --flux-dialog: #322c20;
   --flux-primary: #d99a24;
   --flux-primary-hover: #e9ad38;
   --flux-primary-text: #f8d27a;
@@ -152,6 +167,141 @@ html[data-flux-theme="amber"] {
   --sidebar: #11110f;
   --sidebar-primary: #d99a24;
   --sidebar-accent: #282419;
+  --flux-well: #16130e;
+  --muted-foreground: #b8b4ad;
+  --flux-line: rgb(255 255 255 / 12%);
+}
+
+html[data-flux-theme="graphite"] {
+  --flux-bg: #0a0a0b;
+  --flux-panel: #222326;
+  --flux-panel-2: #161618;
+  --flux-canvas: #08090a;
+  --flux-sidebar: #0d0e10;
+  --flux-header: #101214;
+  --flux-surface: #141619;
+  --flux-raised: #2e2f33;
+  --flux-dialog: #26282b;
+  --flux-primary: #6b7280;
+  --flux-primary-hover: #7c8595;
+  --flux-primary-text: #d4d4d8;
+  --flux-primary-soft: rgb(107 114 128 / 14%);
+  --flux-primary-border: rgb(212 212 216 / 27%);
+  --flux-glow: rgb(107 114 128 / 20%);
+  --background: #08090a;
+  --card: #141619;
+  --popover: #1c1f23;
+  --primary: #6b7280;
+  --secondary: #16181b;
+  --accent: #1c1f23;
+  --ring: #7c8595;
+  --border: rgb(212 212 216 / 13%);
+  --input: rgb(212 212 216 / 17%);
+  --sidebar: #0d0e10;
+  --sidebar-primary: #6b7280;
+  --sidebar-accent: #16181b;
+  --flux-well: #111113;
+  --muted-foreground: #afb1b6;
+  --flux-line: rgb(255 255 255 / 12%);
+}
+
+html[data-flux-theme="emerald"] {
+  --flux-bg: #060f0b;
+  --flux-panel: #143426;
+  --flux-panel-2: #0d2119;
+  --flux-canvas: #040b08;
+  --flux-sidebar: #060f0b;
+  --flux-header: #08140f;
+  --flux-surface: #0a1913;
+  --flux-raised: #1b4634;
+  --flux-dialog: #163b2c;
+  --flux-primary: #059669;
+  --flux-primary-hover: #10b981;
+  --flux-primary-text: #6ee7b7;
+  --flux-primary-soft: rgb(5 150 105 / 14%);
+  --flux-primary-border: rgb(110 231 183 / 27%);
+  --flux-glow: rgb(5 150 105 / 20%);
+  --background: #040b08;
+  --card: #0a1913;
+  --popover: #10261d;
+  --primary: #059669;
+  --secondary: #0c1d16;
+  --accent: #10261d;
+  --ring: #10b981;
+  --border: rgb(110 231 183 / 13%);
+  --input: rgb(110 231 183 / 17%);
+  --sidebar: #060f0b;
+  --sidebar-primary: #059669;
+  --sidebar-accent: #0c1d16;
+  --flux-well: #0a1a13;
+  --muted-foreground: #a6bfb5;
+  --flux-line: rgb(255 255 255 / 12%);
+}
+
+html[data-flux-theme="rose"] {
+  --flux-bg: #0e0608;
+  --flux-panel: #32151d;
+  --flux-panel-2: #200e12;
+  --flux-canvas: #0d0609;
+  --flux-sidebar: #12080c;
+  --flux-header: #170b10;
+  --flux-surface: #1d0e14;
+  --flux-raised: #441d27;
+  --flux-dialog: #391821;
+  --flux-primary: #e11d48;
+  --flux-primary-hover: #f43f5e;
+  --flux-primary-text: #fda4af;
+  --flux-primary-soft: rgb(225 29 72 / 14%);
+  --flux-primary-border: rgb(253 164 175 / 27%);
+  --flux-glow: rgb(225 29 72 / 20%);
+  --background: #0d0609;
+  --card: #1d0e14;
+  --popover: #2a1520;
+  --primary: #e11d48;
+  --secondary: #221017;
+  --accent: #2a1520;
+  --ring: #f43f5e;
+  --border: rgb(253 164 175 / 13%);
+  --input: rgb(253 164 175 / 17%);
+  --sidebar: #12080c;
+  --sidebar-primary: #e11d48;
+  --sidebar-accent: #221017;
+  --flux-well: #190b0e;
+  --muted-foreground: #bda8ad;
+  --flux-line: rgb(255 255 255 / 12%);
+}
+
+html[data-flux-theme="blue"] {
+  --flux-bg: #05080f;
+  --flux-panel: #121b36;
+  --flux-panel-2: #0b1122;
+  --flux-canvas: #050813;
+  --flux-sidebar: #080c1c;
+  --flux-header: #0a1024;
+  --flux-surface: #0c1329;
+  --flux-raised: #182449;
+  --flux-dialog: #141f3d;
+  --flux-primary: #3b6cf0;
+  --flux-primary-hover: #5b86f5;
+  --flux-primary-text: #a5c0ff;
+  --flux-primary-soft: rgb(59 108 240 / 14%);
+  --flux-primary-border: rgb(165 192 255 / 27%);
+  --flux-glow: rgb(59 108 240 / 20%);
+  --background: #050813;
+  --card: #0c1329;
+  --popover: #141e42;
+  --primary: #3b6cf0;
+  --secondary: #0e1530;
+  --accent: #141e42;
+  --ring: #5b86f5;
+  --border: rgb(165 192 255 / 13%);
+  --input: rgb(165 192 255 / 17%);
+  --sidebar: #080c1c;
+  --sidebar-primary: #3b6cf0;
+  --sidebar-accent: #0e1530;
+  --flux-well: #090d1b;
+  --muted-foreground: #a5acc0;
+  --flux-line: rgb(255 255 255 / 12%);
 }
 
 html[data-flux-theme] [class*="text-violet-"] { color: var(--flux-primary-text) !important; }
@@ -212,7 +362,9 @@ html[data-flux-theme] [class*="bg-[#151021]"] { background-color: var(--flux-dia
     margin: 0;
   }
   html {
-    @apply font-mono;
+    @apply font-sans;
+    font-feature-settings: "cv11", "ss01";
+    letter-spacing: -0.005em;
   }
 }
 
@@ -277,9 +429,9 @@ html[data-flux-theme] [class*="bg-[#151021]"] { background-color: var(--flux-dia
    navigation chrome legible and consistent with Flux's dark canvas. */
 .flow-canvas .react-flow__controls {
   overflow: hidden;
-  border: 1px solid rgb(196 181 253 / 20%);
-  border-radius: 12px;
-  background: rgb(21 15 36 / 96%);
+  border: 1px solid var(--flux-line);
+  border-radius: 10px;
+  background: var(--flux-panel);
   box-shadow: 0 14px 35px rgb(0 0 0 / 38%);
 }
 
@@ -287,9 +439,9 @@ html[data-flux-theme] [class*="bg-[#151021]"] { background-color: var(--flux-dia
   width: 30px;
   height: 30px;
   border: 0;
-  border-bottom: 1px solid rgb(255 255 255 / 7%);
+  border-bottom: 1px solid var(--flux-line);
   background: transparent;
-  color: #ddd6fe;
+  color: var(--flux-primary-text);
   fill: currentColor;
 }
 
@@ -298,10 +450,31 @@ html[data-flux-theme] [class*="bg-[#151021]"] { background-color: var(--flux-dia
 }
 
 .flow-canvas .react-flow__controls-button:hover {
-  background: rgb(139 92 246 / 20%);
+  background: var(--flux-primary-soft);
   color: #fff;
 }
 
 .flow-canvas .react-flow__controls-button svg {
   fill: currentColor;
 }
+
+@keyframes flux-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.flux-fade-in { animation: flux-fade-in 160ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .flux-fade-in { animation: none; } }
+
+html[data-flux-contrast="high"] {
+  --flux-line: rgb(255 255 255 / 34%);
+  --flux-well: #000000;
+  --muted-foreground: #d4d4d8;
+}
+html[data-flux-contrast="high"] [class*="text-muted-foreground"] { color: #d4d4d8 !important; }
+
+@keyframes flux-node-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+.flux-node-in { animation: flux-node-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) { .flux-node-in { animation: none; } }

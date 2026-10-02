@@ -54,10 +54,11 @@ export function WorkspaceTransfer({ userId, workspace, onImported, variant = "ca
       <button
         type="button"
         onClick={() => setLauncherOpen(true)}
-        className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-violet-300/15 bg-violet-500/[0.08] px-3 text-[11px] font-medium text-violet-100 transition-colors hover:border-violet-300/30 hover:bg-violet-500/15"
+        title="Importar / exportar"
+        aria-label="Importar / exportar"
+        className="grid size-7 shrink-0 place-items-center rounded-md text-zinc-300 transition bg-white/[0.05] ring-1 ring-white/[0.08] hover:bg-white/[0.1] hover:ring-white/[0.16] active:scale-95"
       >
         <ArrowLeftRight size={14} />
-        <span>Importar / exportar</span>
       </button>
     ) : <div className="grid grid-cols-2 gap-3 max-sm:grid-cols-1">
       <button type="button" disabled={!workspace} onClick={() => setExportOpen(true)} className="flex items-center gap-4 rounded-xl border border-white/[0.07] bg-black/15 p-4 text-left hover:border-violet-400/20 hover:bg-violet-500/[0.06] disabled:cursor-not-allowed disabled:opacity-40"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-violet-500/10 text-violet-300"><Download size={17}/></span><span><span className="block text-sm font-medium text-white">Exportar workspace</span><span className="mt-1 block text-[10px] text-muted-foreground">Guarda {workspace?.name ?? "el workspace activo"} como .flux.json</span></span></button>

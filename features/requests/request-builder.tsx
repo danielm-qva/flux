@@ -15,11 +15,22 @@ import {
   Trash2,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ClipboardEvent,
+  FormEvent,
+  PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { toast } from "sonner";
 
 import {
   resolveEnvironmentVariables,
+  type Environment,
   type EnvironmentVariable,
   type Workspace,
 } from "@/features/workspaces/workspace-client";
@@ -31,6 +42,7 @@ import {
 } from "./request-client";
 import { prepareHttpRequest } from "./prepare-http-request";
 import { JsonTree } from "./json-tree";
+import { SaveToEnvironmentDialog } from "./save-to-environment-dialog";
 import { EnvironmentAutocomplete } from "./environment-autocomplete";
 import { parseCurlCommand } from "./curl-parser";
 
@@ -69,6 +81,11 @@ export function RequestBuilder({
   userId,
   workspace,
   variables,
+  flowVariables = [],
+  environments,
+  activeEnvironmentId,
+  onVariableSaved,
+  onEnvironmentCreated,
   request,
   onSaved,
   onExecuted,
@@ -78,6 +95,11 @@ export function RequestBuilder({
   userId: string;
   workspace: Workspace;
   variables: EnvironmentVariable[];
+  flowVariables?: { key: string; from: string }[];
+  environments: Environment[];
+  activeEnvironmentId: string;
+  onVariableSaved: (variable: EnvironmentVariable) => void;
+  onEnvironmentCreated: (environment: Environment) => void;
   request: SavedRequest;
   onSaved: (request: SavedRequest) => void;
   onExecuted?: (result: { method: string; resolvedUrl: string; response?: HttpResponse; error?: string }) => void;
@@ -127,7 +149,28 @@ export function RequestBuilder({
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [curlImporterOpen, setCurlImporterOpen] = useState(false);
+  const [envTarget, setEnvTarget] = useState<{ path: string; value: string } | null>(null);
+  const [requestHeight, setRequestHeight] = useState(280);
+  const containerRef = useRef<HTMLElement>(null);
+  const sendShortcut = useSendShortcut();
   const resolvedUrl = resolveEnvironmentVariables(url, variables);
+  // Las variables de Flow solo se sugieren al escribir `{{`; no se resuelven fuera de un Flow.
+  const suggestionVariables = useMemo<EnvironmentVariable[]>(
+    () => [
+      ...variables,
+      ...flowVariables
+        .filter((item) => !variables.some((variable) => variable.key.toLowerCase() === item.key.toLowerCase()))
+        .map((item) => ({
+          id: `flow-${item.key}`,
+          environmentId: "",
+          key: item.key,
+          value: `Flow · ${item.from}`,
+          createdAt: "",
+          updatedAt: "",
+        })),
+    ],
+    [variables, flowVariables],
+  );
   const dirty = useMemo(() =>
     method !== request.method || url !== request.url ||
     JSON.stringify(params) !== request.paramsJson ||
@@ -138,6 +181,28 @@ export function RequestBuilder({
   );
 
   useEffect(() => onDirtyChange?.(request.id, dirty), [dirty, onDirtyChange, request.id]);
+
+  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = requestHeight;
+    const maxHeight = Math.max(
+      160,
+      (containerRef.current?.clientHeight ?? 700) - 200,
+    );
+    const move = (e: PointerEvent) =>
+      setRequestHeight(
+        Math.min(maxHeight, Math.max(120, startHeight + e.clientY - startY)),
+      );
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      document.body.style.cursor = "";
+    };
+    document.body.style.cursor = "row-resize";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  }
 
   function updateParams(next: Pair[]) {
     setParams(next);
@@ -254,6 +319,30 @@ export function RequestBuilder({
 
   useEffect(() => registerSave?.(request.id, () => saveRequest(false)), [registerSave, request.id, saveRequest]);
 
+  function handleUrlPaste(event: ClipboardEvent<HTMLDivElement>) {
+    const text = event.clipboardData.getData("text").trim();
+    if (/^curl\s/i.test(text)) {
+      event.preventDefault();
+      try {
+        importCurl(text);
+      } catch (cause) {
+        toast.error("No se pudo leer el cURL", {
+          description: cause instanceof Error ? cause.message : String(cause),
+        });
+      }
+      return;
+    }
+    const withMethod = text.match(
+      /^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+(\S+)$/i,
+    );
+    if (withMethod) {
+      event.preventDefault();
+      setMethod(withMethod[1].toUpperCase() as HttpMethod);
+      setUrl(withMethod[2]);
+      setParams(paramsFromUrl(withMethod[2]));
+    }
+  }
+
   function importCurl(source: string) {
     const parsed = parseCurlCommand(source);
     if (!HTTP_METHODS.includes(parsed.method as HttpMethod)) {
@@ -307,181 +396,224 @@ export function RequestBuilder({
   }
 
   return (
-    <section className="h-full min-h-0 w-full self-start pt-1">
-      <div className="flex h-6 items-center justify-between gap-3">
-        <p className="truncate text-[10px] tracking-[0.16em] text-muted-foreground uppercase">
-          {request.name} · {workspace.name}
-        </p>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void saveRequest(true)}
-            disabled={saving}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-violet-400/20 bg-violet-500/[0.07] px-2.5 text-[10px] font-medium text-violet-200 hover:bg-violet-500/15 disabled:cursor-wait disabled:opacity-65"
+    <section
+      ref={containerRef}
+      className="flex h-full min-h-0 w-full flex-col"
+      onKeyDown={(event) => {
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          if (!sending) void sendRequest();
+        }
+      }}
+    >
+      <div
+        style={{ height: requestHeight }}
+        className="flex min-h-[160px] shrink-0 flex-col overflow-hidden rounded-xl bg-[var(--flux-panel)] ring-1 ring-[var(--flux-line)]"
+      >
+      <div className="flex shrink-0 items-center gap-2 p-3 pb-1">
+        <div className="relative shrink-0">
+          <select
+            value={method}
+            onChange={(event) => setMethod(event.target.value as HttpMethod)}
+            aria-label="Método HTTP"
+            className={`h-10 appearance-none rounded-md bg-[var(--flux-well)] ring-1 ring-[var(--flux-line)] pr-7 pl-3 font-mono text-xs font-bold outline-none focus:ring-[var(--flux-primary-border)] ${METHOD_COLORS[method] ?? "text-violet-200"}`}
           >
-            {saving ? <LoaderCircle size={12} className="animate-spin" /> : <Save size={12} />}
-            {saving ? "Guardando" : "Guardar"}
-          </button>
-          <button
-            type="button"
-            onClick={() => setCurlImporterOpen(true)}
-            className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-white/[0.07] px-2.5 text-[10px] text-muted-foreground hover:border-violet-400/20 hover:bg-violet-400/10 hover:text-violet-200"
-          >
-            <ClipboardPaste size={12} /> Importar cURL
-          </button>
+            {HTTP_METHODS.map((item) => (
+              <option
+                key={item}
+                value={item}
+                className={`bg-[var(--flux-raised)] font-mono font-bold ${METHOD_COLORS[item]}`}
+              >
+                {item}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            size={12}
+            className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground"
+          />
         </div>
+        <div className="min-w-0 flex-1" onPasteCapture={handleUrlPaste}>
+        <EnvironmentAutocomplete
+          id="request-url"
+          value={url}
+          onChange={setUrl}
+          variables={suggestionVariables}
+          highlightVariables
+          placeholder="{{BASE_URL}}/v1/resource"
+          wrapperClassName="w-full"
+          className="h-10 w-full rounded-md bg-transparent px-3 font-mono text-sm text-white outline-none placeholder:text-muted-foreground/40"
+        />
+        </div>
+        <button
+          type="button"
+          onClick={sendRequest}
+          disabled={sending}
+          className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-violet-600 px-5 text-sm font-semibold text-white shadow-[0_0_22px_var(--flux-glow)] transition hover:bg-violet-500 active:scale-[0.97] disabled:cursor-wait disabled:opacity-65"
+        >
+          {sending ? (
+            <LoaderCircle size={13} className="animate-spin" />
+          ) : (
+            <Send size={13} />
+          )}
+          {sending ? "Enviando" : "Enviar"}
+          {!sending ? (
+            <kbd className="ml-1 hidden rounded bg-black/25 px-1.5 py-0.5 font-sans text-[10px] font-medium text-white/70 lg:inline">
+              {sendShortcut}
+            </kbd>
+          ) : null}
+        </button>
+        <button
+          type="button"
+          onClick={() => void saveRequest(true)}
+          disabled={saving}
+          title="Guardar"
+          aria-label="Guardar petición"
+          className="grid size-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white disabled:cursor-wait disabled:opacity-65"
+        >
+          {saving ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}
+        </button>
+        <button
+          type="button"
+          onClick={() => setCurlImporterOpen(true)}
+          title="Importar cURL"
+          aria-label="Importar cURL"
+          className="grid size-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white"
+        >
+          <ClipboardPaste size={14} />
+        </button>
       </div>
-      <div className="mt-3 grid h-[calc(100%-24px)] min-h-0 grid-cols-[minmax(460px,1.08fr)_minmax(380px,0.92fr)] gap-4 max-xl:grid-cols-1 max-xl:grid-rows-[minmax(0,1fr)_minmax(0,0.72fr)] max-lg:gap-2">
-        <div className="min-h-0 overflow-y-auto pr-1">
-          <div className="rounded-xl border border-white/[0.07] bg-[#120c1e] p-4">
-            <div className="grid grid-cols-[140px_minmax(0,1fr)_105px] gap-2 max-lg:grid-cols-[120px_minmax(0,1fr)_100px] max-sm:grid-cols-[110px_minmax(0,1fr)]">
-              <label className="relative">
-                <span className="mb-1.5 block text-[9px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-                  Método
-                </span>
-                <select
-                  value={method}
-                  onChange={(event) =>
-                    setMethod(event.target.value as HttpMethod)
-                  }
-                  className={`h-11 w-full appearance-none rounded-lg border border-white/[0.08] bg-[#1b112c] px-3 pr-8 font-mono text-xs font-bold outline-none focus:border-violet-400/50 ${METHOD_COLORS[method] ?? "text-violet-200"}`}
-                >
-                  {HTTP_METHODS.map((item) => (
-                    <option
-                      key={item}
-                      value={item}
-                      className={`bg-[#1b112c] font-mono font-bold ${METHOD_COLORS[item]}`}
-                    >
-                      {item}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown
-                  size={13}
-                  className="pointer-events-none absolute right-3 bottom-3.5 text-muted-foreground"
-                />
-              </label>
-              <label>
-                <span className="mb-1.5 block text-[9px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-                  URL
-                </span>
-                <EnvironmentAutocomplete
-                  id="request-url"
-                  value={url}
-                  onChange={setUrl}
-                  variables={variables}
-                  highlightVariables
-                  placeholder="{{BASE_URL}}/v1/resource"
-                  className="h-11 w-full rounded-lg border border-white/[0.08] bg-transparent px-3 font-mono text-xs text-white outline-none placeholder:text-muted-foreground/40 focus:border-violet-400/50"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={sendRequest}
-                disabled={sending}
-                className="mt-[21px] flex h-11 items-center justify-center gap-2 rounded-lg bg-violet-600 text-xs font-semibold text-white hover:bg-violet-500 disabled:cursor-wait disabled:opacity-65 max-sm:col-span-2 max-sm:mt-1"
-              >
-                {sending ? (
-                  <LoaderCircle size={14} className="animate-spin" />
-                ) : (
-                  <Send size={14} />
-                )}{" "}
-                {sending ? "Enviando" : "Enviar"}
-              </button>
-            </div>
-            <p className="mt-2 truncate text-[10px] text-muted-foreground">
-              URL resuelta:{" "}
-              <span
-                className={
-                  resolvedUrl === url && url.includes("{{")
-                    ? "text-amber-300"
-                    : "text-violet-200"
-                }
-              >
-                {resolvedUrl}
-              </span>
-            </p>
-          </div>
+      {url.includes("{{") ? (
+        <p className="mx-4 mt-1 shrink-0 truncate font-mono text-[10px] text-muted-foreground">
+          →{" "}
+          <span
+            className={
+              resolvedUrl === url ? "text-amber-300" : "text-violet-200"
+            }
+          >
+            {resolvedUrl}
+          </span>
+        </p>
+      ) : null}
 
-          <div className="mt-4 min-h-[360px] overflow-hidden rounded-xl border border-white/[0.07] bg-[#120c1e]">
-            <div className="flex border-b border-white/[0.06] px-3">
-              <TabButton
-                label="Params"
-                count={params.filter((item) => item.enabled && item.key).length}
-                active={tab === "params"}
-                onClick={() => setTab("params")}
-              />
-              <TabButton
-                label="Headers"
-                count={
-                  headers.filter((item) => item.enabled && item.key).length
-                }
-                active={tab === "headers"}
-                onClick={() => setTab("headers")}
-              />
-              <TabButton
-                label="Auth"
-                active={tab === "auth"}
-                onClick={() => setTab("auth")}
-              />
-              <TabButton
-                label="Body"
-                active={tab === "body"}
-                onClick={() => setTab("body")}
-              />
-            </div>
-            {tab === "params" ? (
-              <PairsEditor
-                title="Query params"
-                rows={params}
-                onChange={updateParams}
-                variables={variables}
-              />
-            ) : null}
-            {tab === "headers" ? (
-              <PairsEditor
-                title="Headers"
-                rows={headers}
-                onChange={setHeaders}
-                variables={variables}
-                keyPlaceholder="Authorization"
-                valuePlaceholder="Bearer {{TOKEN}}"
-              />
-            ) : null}
-            {tab === "auth" ? (
-              <AuthEditor
-                type={authType}
-                onTypeChange={changeAuthType}
-                value={auth}
-                onChange={changeAuth}
-                variables={variables}
-              />
-            ) : null}
-            {tab === "body" ? (
-              <BodyEditor
-                type={bodyType}
-                onTypeChange={setBodyType}
-                value={body}
-                onChange={setBody}
-              />
-            ) : null}
-          </div>
+      <div className="mt-1 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex shrink-0 gap-1 px-2">
+          <TabButton
+            label="Params"
+            count={params.filter((item) => item.enabled && item.key).length}
+            active={tab === "params"}
+            onClick={() => setTab("params")}
+          />
+          <TabButton
+            label="Headers"
+            count={headers.filter((item) => item.enabled && item.key).length}
+            active={tab === "headers"}
+            onClick={() => setTab("headers")}
+          />
+          <TabButton
+            label="Auth"
+            active={tab === "auth"}
+            onClick={() => setTab("auth")}
+          />
+          <TabButton
+            label="Body"
+            active={tab === "body"}
+            onClick={() => setTab("body")}
+          />
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {tab === "params" ? (
+            <PairsEditor
+              title="Query params"
+              rows={params}
+              onChange={updateParams}
+              variables={suggestionVariables}
+            />
+          ) : null}
+          {tab === "headers" ? (
+            <PairsEditor
+              title="Headers"
+              rows={headers}
+              onChange={setHeaders}
+              variables={suggestionVariables}
+              keyPlaceholder="Authorization"
+              valuePlaceholder="Bearer {{TOKEN}}"
+            />
+          ) : null}
+          {tab === "auth" ? (
+            <AuthEditor
+              type={authType}
+              onTypeChange={changeAuthType}
+              value={auth}
+              onChange={changeAuth}
+              variables={suggestionVariables}
+            />
+          ) : null}
+          {tab === "body" ? (
+            <BodyEditor
+              type={bodyType}
+              onTypeChange={setBodyType}
+              value={body}
+              onChange={setBody}
+              variables={suggestionVariables}
+            />
+          ) : null}
           {requestError ? (
-            <div className="mt-4 rounded-xl border border-rose-400/20 bg-rose-400/[0.07] px-4 py-3 text-xs text-rose-200">
+            <div className="m-3 rounded-md border border-rose-400/20 bg-rose-400/[0.07] px-3 py-2 text-xs text-rose-200">
               {requestError}
             </div>
           ) : null}
         </div>
-        <ResponsePanel response={response} loading={sending} />
       </div>
+      </div>
+
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Redimensionar respuesta"
+        onPointerDown={startResize}
+        className="group relative z-10 h-3 shrink-0 cursor-row-resize touch-none"
+      >
+        <span className="absolute top-1/2 left-1/2 h-1 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.08] transition-colors group-hover:bg-violet-400/60" />
+      </div>
+
+      <ResponsePanel
+        response={response}
+        loading={sending}
+        onSaveToEnv={(path, value) => setEnvTarget({ path, value })}
+      />
       {curlImporterOpen ? (
         <CurlImportDialog
           onClose={() => setCurlImporterOpen(false)}
           onImport={importCurl}
         />
       ) : null}
+      {envTarget ? (
+        <SaveToEnvironmentDialog
+          userId={userId}
+          workspaceId={workspace.id}
+          environments={environments}
+          defaultEnvironmentId={activeEnvironmentId}
+          path={envTarget.path}
+          value={envTarget.value}
+          onClose={() => setEnvTarget(null)}
+          onSaved={onVariableSaved}
+          onEnvironmentCreated={onEnvironmentCreated}
+        />
+      ) : null}
     </section>
   );
+}
+
+const noopSubscribe = () => () => {};
+
+function useSendShortcut() {
+  const mac = useSyncExternalStore(
+    noopSubscribe,
+    () => /Mac|iPhone|iPad/i.test(navigator.platform),
+    () => true,
+  );
+  return mac ? "⌘↵" : "Ctrl↵";
 }
 
 function TabButton({
@@ -499,16 +631,16 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative flex h-12 items-center gap-2 px-4 text-xs ${active ? "text-violet-200" : "text-muted-foreground hover:text-white"}`}
+      className={`relative flex h-9 items-center gap-1.5 px-3 text-xs ${active ? "text-violet-200" : "text-muted-foreground hover:text-white"}`}
     >
       {label}
       {count ? (
-        <span className="rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[9px] text-violet-300">
+        <span className="text-[10px] text-violet-300">
           {count}
         </span>
       ) : null}
       {active ? (
-        <span className="absolute inset-x-2 bottom-0 h-px bg-violet-400" />
+        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-violet-400" />
       ) : null}
     </button>
   );
@@ -548,19 +680,7 @@ function PairsEditor({
   }
   return (
     <div>
-      <div className="flex items-center justify-between border-b border-white/[0.045] px-5 py-3">
-        <span className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-          {title}
-        </span>
-        <button
-          type="button"
-          onClick={add}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs text-violet-300 hover:bg-violet-400/10"
-        >
-          <CirclePlus size={14} /> Añadir
-        </button>
-      </div>
-      <div className="grid grid-cols-[32px_minmax(130px,0.8fr)_minmax(180px,1.2fr)_42px] border-b border-white/[0.04] px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
+      <div className="grid grid-cols-[32px_minmax(130px,0.8fr)_minmax(180px,1.2fr)_42px] px-3 py-1.5 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
         <span />
         <span>Clave</span>
         <span>Valor</span>
@@ -569,7 +689,7 @@ function PairsEditor({
       {rows.map((row) => (
         <div
           key={row.id}
-          className="grid grid-cols-[32px_minmax(130px,0.8fr)_minmax(180px,1.2fr)_42px] items-center border-b border-white/[0.04] px-4 py-2"
+          className="grid grid-cols-[32px_minmax(130px,0.8fr)_minmax(180px,1.2fr)_42px] items-center px-3 py-0.5"
         >
           <input
             type="checkbox"
@@ -584,14 +704,14 @@ function PairsEditor({
             value={row.key}
             onChange={(event) => patch(row.id, { key: event.target.value })}
             placeholder={keyPlaceholder}
-            className="h-9 border-r border-white/[0.05] bg-transparent px-3 font-mono text-xs text-violet-100 outline-none placeholder:text-muted-foreground/35"
+            className="h-9 rounded-md bg-transparent px-3 font-mono text-xs text-violet-100 outline-none placeholder:text-muted-foreground/35 focus:bg-white/[0.05] focus:ring-1 focus:ring-[var(--flux-primary-border)]"
           />
           <EnvironmentAutocomplete
             value={row.value}
             onChange={(value) => patch(row.id, { value })}
             variables={variables}
             placeholder={valuePlaceholder}
-            className="h-9 min-w-0 w-full bg-transparent px-3 font-mono text-xs text-white outline-none placeholder:text-muted-foreground/35"
+            className="h-9 min-w-0 w-full rounded-md bg-transparent px-3 font-mono text-xs text-white outline-none placeholder:text-muted-foreground/35 focus:bg-white/[0.05] focus:ring-1 focus:ring-[var(--flux-primary-border)]"
           />
           <button
             type="button"
@@ -603,6 +723,13 @@ function PairsEditor({
           </button>
         </div>
       ))}
+      <button
+        type="button"
+        onClick={add}
+        className="m-2 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-violet-300 hover:bg-violet-400/10"
+      >
+        <CirclePlus size={13} /> Añadir
+      </button>
     </div>
   );
 }
@@ -629,7 +756,7 @@ function AuthEditor({
         <select
           value={type}
           onChange={(event) => onTypeChange(event.target.value)}
-          className="mt-2 h-10 w-full rounded-lg border border-white/[0.08] bg-[#1b112c] px-3 text-xs text-white outline-none"
+          className="mt-2 h-10 w-full rounded-lg border border-white/[0.08] bg-[var(--flux-raised)] px-3 text-xs text-white outline-none"
         >
           <option value="none">Sin autorización</option>
           <option value="bearer">Bearer token</option>
@@ -723,11 +850,13 @@ function BodyEditor({
   onTypeChange,
   value,
   onChange,
+  variables,
 }: {
   type: string;
   onTypeChange: (type: string) => void;
   value: string;
   onChange: (value: string) => void;
+  variables: EnvironmentVariable[];
 }) {
   const mainType = type.startsWith("raw:") ? "raw" : type;
   const rawType = type.startsWith("raw:") ? type.slice(4) : "json";
@@ -803,10 +932,10 @@ function BodyEditor({
                 onChange={(event) => onTypeChange(`raw:${event.target.value}`)}
                 className="h-8 appearance-none rounded-lg border border-violet-500/30 bg-violet-500/15 px-3 pr-8 text-[10px] font-medium text-violet-100 outline-none hover:bg-violet-500/25"
               >
-                <option className="bg-[#1a1030] text-violet-100" value="json">JSON</option>
-                <option className="bg-[#1a1030] text-violet-100" value="text">Text</option>
-                <option className="bg-[#1a1030] text-violet-100" value="xml">XML</option>
-                <option className="bg-[#1a1030] text-violet-100" value="html">HTML</option>
+                <option className="bg-[var(--flux-raised)] text-violet-100" value="json">JSON</option>
+                <option className="bg-[var(--flux-raised)] text-violet-100" value="text">Text</option>
+                <option className="bg-[var(--flux-raised)] text-violet-100" value="xml">XML</option>
+                <option className="bg-[var(--flux-raised)] text-violet-100" value="html">HTML</option>
               </select>
               <ChevronDown
                 size={12}
@@ -829,15 +958,14 @@ function BodyEditor({
       ) : type === "graphql" ? (
         <GraphqlBodyEditor value={value} onChange={onChange} />
       ) : (
-        <textarea
+        <EnvironmentAutocomplete
+          multiline
           value={value}
-          onChange={(event) => onChange(event.target.value)}
-          aria-label="Body de la petición"
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          className="min-h-[290px] w-full resize-none bg-[#10091c] p-5 font-mono text-xs leading-6 text-violet-100 outline-none"
+          onChange={onChange}
+          variables={variables}
+          ariaLabel="Body de la petición"
+          placeholder={'Escribe {{ para usar variables'}
+          className="min-h-[290px] w-full resize-none bg-black/20 p-5 font-mono text-xs leading-6 text-violet-100 outline-none"
         />
       )}
     </div>
@@ -909,16 +1037,19 @@ function BinaryBodyEditor({ value, onChange }: { value: string; onChange: (value
 function GraphqlBodyEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   const parsed = parseSavedValue<{ query: string; variables: string }>(value, { query: "", variables: "{}" });
   const patch = (next: Partial<typeof parsed>) => onChange(JSON.stringify({ ...parsed, ...next }));
-  return <div className="grid min-h-[290px] grid-cols-[1.2fr_.8fr] divide-x divide-white/[0.05] max-md:grid-cols-1 max-md:divide-x-0"><label className="flex min-h-0 flex-col"><span className="px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">Query</span><textarea value={parsed.query} onChange={(event) => patch({ query: event.target.value })} autoComplete="off" spellCheck={false} placeholder={"query GetUser {\n  user { id name }\n}"} className="min-h-56 flex-1 resize-none bg-[#10091c] p-4 font-mono text-xs leading-6 text-violet-100 outline-none"/></label><label className="flex min-h-0 flex-col border-t border-white/[0.05] md:border-t-0"><span className="px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">Variables JSON</span><textarea value={parsed.variables} onChange={(event) => patch({ variables: event.target.value })} autoComplete="off" spellCheck={false} placeholder={'{\n  "id": "1"\n}'} className="min-h-40 flex-1 resize-none bg-[#10091c] p-4 font-mono text-xs leading-6 text-sky-200 outline-none"/></label></div>;
+  return <div className="grid min-h-[290px] grid-cols-[1.2fr_.8fr] divide-x divide-white/[0.05] max-md:grid-cols-1 max-md:divide-x-0"><label className="flex min-h-0 flex-col"><span className="px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">Query</span><textarea value={parsed.query} onChange={(event) => patch({ query: event.target.value })} autoComplete="off" spellCheck={false} placeholder={"query GetUser {\n  user { id name }\n}"} className="min-h-56 flex-1 resize-none bg-black/20 p-4 font-mono text-xs leading-6 text-violet-100 outline-none"/></label><label className="flex min-h-0 flex-col border-t border-white/[0.05] md:border-t-0"><span className="px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">Variables JSON</span><textarea value={parsed.variables} onChange={(event) => patch({ variables: event.target.value })} autoComplete="off" spellCheck={false} placeholder={'{\n  "id": "1"\n}'} className="min-h-40 flex-1 resize-none bg-black/20 p-4 font-mono text-xs leading-6 text-sky-200 outline-none"/></label></div>;
 }
 
 function ResponsePanel({
   response,
   loading,
+  onSaveToEnv,
 }: {
   response: HttpResponse | null;
   loading: boolean;
+  onSaveToEnv?: (path: string, value: string) => void;
 }) {
+  const sendShortcut = useSendShortcut();
   const [view, setView] = useState<"pretty" | "raw" | "headers">("pretty");
   const [copied, setCopied] = useState(false);
   const content = response
@@ -935,21 +1066,21 @@ function ResponsePanel({
     window.setTimeout(() => setCopied(false), 1200);
   }
   return (
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-white/[0.07] bg-[#120c1e]">
-      <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b border-white/[0.06] px-3 py-2">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-[var(--flux-panel-2)] ring-1 ring-[var(--flux-line)]">
+      <div className="flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-1">
         <div className="flex flex-wrap items-center gap-2 text-[9px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
           <span>Response</span>
           {response ? (
             <>
               <span
-                className={`rounded px-2 py-1 ${statusColor(response.status)}`}
+                className={`rounded-md px-2.5 py-1 text-xs font-semibold tracking-normal normal-case ${statusColor(response.status)}`}
               >
                 {response.status} {response.statusText}
               </span>
-              <span className="tracking-normal normal-case">
+              <span className="text-xs tracking-normal text-zinc-300 normal-case">
                 {response.durationMs} ms
               </span>
-              <span className="tracking-normal normal-case">
+              <span className="text-xs tracking-normal text-zinc-300 normal-case">
                 {formatBytes(response.sizeBytes)}
               </span>
             </>
@@ -994,7 +1125,7 @@ function ResponsePanel({
           ) : null}
         </div>
       </div>
-      <div className="min-h-0 flex-1">
+      <div key={response ? `${response.status}-${response.durationMs}-${response.sizeBytes}` : "empty"} className="flux-fade-in min-h-0 flex-1 overflow-auto">
         {loading ? (
           <div className="grid h-full min-h-[170px] place-items-center text-xs text-muted-foreground">
             <span className="flex items-center gap-2">
@@ -1007,15 +1138,31 @@ function ResponsePanel({
           </div>
         ) : response ? (
           view === "pretty" ? (
-            <JsonTree source={response.body} />
+            <JsonTree source={response.body} onSaveToEnv={onSaveToEnv} />
           ) : (
             <pre className="h-full overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-xs leading-6 text-violet-100">
               {content || "La respuesta no contiene body."}
             </pre>
           )
         ) : (
-          <div className="grid h-full min-h-[170px] place-items-center text-xs text-muted-foreground">
-            Envía una petición para ver aquí su respuesta.
+          <div className="grid h-full min-h-[170px] place-items-center px-6 text-center">
+            <div className="flux-fade-in">
+              <Send size={18} className="mx-auto text-muted-foreground/60" />
+              <p className="mt-3 text-sm text-zinc-200">Listo para tu primera petición</p>
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Escribe una URL y pulsa{" "}
+                <kbd className="rounded bg-white/[0.08] px-1.5 py-0.5 font-sans text-[10px] text-zinc-200">
+                  {sendShortcut}
+                </kbd>{" "}
+                para enviar.
+              </p>
+              <p className="mt-3 font-mono text-[11px] text-muted-foreground/70">
+                {"{{BASE_URL}}/v1/users"}
+              </p>
+              <p className="mt-1 text-[10px] text-muted-foreground/60">
+                Escribe {"{{"} para usar variables del environment
+              </p>
+            </div>
           </div>
         )}
       </div>
@@ -1144,9 +1291,9 @@ function formatBytes(bytes: number) {
 }
 function encodeTemplateValue(value: string) {
   return value
-    .split(/(\{\{[A-Za-z_][A-Za-z0-9_]*\}\})/g)
+    .split(/(\{\{[A-Za-z_][A-Za-z0-9_]*}\})/g)
     .map((part) =>
-      /^\{\{.+\}\}$/.test(part) ? part : encodeURIComponent(part),
+      /^\{\{.+}\}$/.test(part) ? part : encodeURIComponent(part),
     )
     .join("");
 }
