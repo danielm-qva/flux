@@ -6,6 +6,43 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-10-01
+
+Esta versión renueva por completo la interfaz de Flux (más limpia, con paneles y temas) y convierte Flow en una herramienta para encadenar peticiones sin escribir variables a mano.
+
+### Añadido
+
+- Paleta de comandos (`⌘K` / `Ctrl+K`) para buscar peticiones, cambiar de workspace, environment o tema, y lanzar acciones.
+- Pegar un comando `curl …` o `GET https://…` en la barra de URL rellena la petición automáticamente.
+- Workspace de ejemplo «Primeros pasos» en la primera ejecución, con una API pública lista para probar.
+- Cuatro temas nuevos (Grafito, Esmeralda, Rosa y Azul), selector rápido de tema en la barra superior y modo de alto contraste.
+- Atajo `⌘↵` / `Ctrl+↵` para enviar la petición desde cualquier campo.
+- Puntos de estado por petición (verde/rojo) en pestañas y árbol, y filtro «Solo esta petición» en el historial.
+- Flow: «Convertir en Flow» desde una carpeta, con variables encadenadas automáticamente y animación de aparición.
+- Flow: botón «Sugerir variables», etiquetas con el nombre de la variable en las conexiones y aviso de nodos sin conectar.
+- Flow: pestañas **Respuesta · Guarda · Recibe · Verifica** en el panel del nodo; extraer valores con un clic desde la respuesta.
+- Flow: pestaña «Recibe» para colocar, mover o quitar una variable en la URL (ruta o query), headers, Bearer o body, con vista previa y nombres personalizados.
+- Flow: ejecutar hasta un nodo, aserciones por nodo (status, campo existe/igual, tiempo) y resumen de ejecución copiable en Markdown.
+- Autocompletado de variables de Flow al escribir `{{`, también en el body.
+- Eliminar nodos desde el propio nodo, el panel o el teclado.
+
+### Cambiado
+
+- Vista de petición en una sola columna con la response debajo y divisor redimensionable.
+- Interfaz en paneles flotantes con escala de superficies y bordes más sutiles; botones de la barra superior con aspecto de botón.
+- Pestañas de peticiones planas y minimalistas; notificaciones discretas.
+- Nueva tipografía de interfaz (Plus Jakarta Sans); la monoespaciada se reserva para URL, valores y respuestas.
+- Los menús desplegables se cierran al hacer clic fuera o con `Esc`.
+- La vista de Flow y su lienzo siguen el tema seleccionado.
+- Salir de la vista de peticiones guarda todas las pestañas con cambios.
+
+### Corregido
+
+- Un 4xx o 5xx ya detiene el Flow en lugar de continuar con variables vacías.
+- El cursor del campo de URL ya no se desplaza respecto al texto resaltado.
+- Una variable recreada en Flow ya no muestra el valor de una ejecución anterior.
+- Los nodos nuevos aparecen en la zona visible del lienzo.
+
 ## [3.2.0] - 2026-07-20
 
 Esta versión hace que Flow sea más fácil de descubrir, aprender y utilizar, y mejora la edición de peticiones con URLs extensas.
@@ -143,6 +180,7 @@ Primera release estable de Flux para Windows.
 - Verificación criptográfica obligatoria de los paquetes de actualización.
 - Clave privada de actualizaciones excluida del repositorio.
 
+[3.5.0]: https://github.com/danielm-qva/flux/releases/tag/v3.5.0
 [3.2.0]: https://github.com/danielm-qva/flux/releases/tag/v3.2.0
 [3.1.0]: https://github.com/danielm-qva/flux/releases/tag/v3.1.0
 [3.0.0]: https://github.com/danielm-qva/flux/releases/tag/v3.0.0
