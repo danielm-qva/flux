@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
+import { Clock, Plus, X } from "lucide-react";
 import type { SavedRequest } from "./request-client";
 
 const methodColors: Record<string, string> = {
@@ -9,11 +9,12 @@ const methodColors: Record<string, string> = {
   OPTIONS: "text-pink-300",
 };
 
-export function RequestTabs({ tabs, activeId, dirtyIds, statusById, onSelect, onClose, onNew }: {
+export function RequestTabs({ tabs, activeId, dirtyIds, statusById, automatedIds, onSelect, onClose, onNew }: {
   tabs: SavedRequest[];
   activeId: string;
   dirtyIds: Set<string>;
   statusById?: Map<string, "ok" | "error">;
+  automatedIds?: Set<string>;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onNew: () => void;
@@ -28,7 +29,7 @@ export function RequestTabs({ tabs, activeId, dirtyIds, statusById, onSelect, on
             <button type="button" role="tab" aria-selected={active} onClick={() => onSelect(request.id)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
               {statusById?.get(request.id) ? <span className={`size-1.5 shrink-0 rounded-full ${statusById.get(request.id) === "ok" ? "bg-emerald-400" : "bg-rose-400"}`} title={statusById.get(request.id) === "ok" ? "Última ejecución correcta" : "Última ejecución con error"} /> : null}
               <span className={`font-mono text-[9px] font-semibold ${active ? "" : "opacity-60"} ${methodColors[request.method] ?? "text-violet-300"}`}>{request.method}</span>
-              <span className="truncate">{request.name}</span>
+              <span className="truncate">{request.name}</span>{automatedIds?.has(request.id) ? <Clock size={10} className="shrink-0 text-[var(--flux-primary-text)]" aria-label="Automatizada" /> : null}
             </button>
             <button type="button" onClick={() => onClose(request.id)} aria-label={`Cerrar ${request.name}`} title={dirty ? "Cambios sin guardar" : undefined} className="relative ml-1 grid size-4 shrink-0 place-items-center rounded-sm text-muted-foreground hover:bg-white/10 hover:text-white">
               {dirty ? <span className="size-1.5 rounded-full bg-amber-300 group-hover:hidden" /> : null}

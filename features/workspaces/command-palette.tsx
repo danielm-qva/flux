@@ -2,7 +2,9 @@
 
 import { Command } from "cmdk";
 import {
+  Clock,
   Clock3,
+  Home,
   FileJson2,
   FolderPlus,
   Layers,
@@ -19,7 +21,7 @@ import type { SavedRequest } from "@/features/requests/request-client";
 import type { Environment, Workspace } from "./workspace-client";
 import { THEMES, applyTheme, type ThemeId } from "@/features/settings/settings-view";
 
-type View = "request" | "environment" | "settings" | "flows";
+type View = "request" | "environment" | "settings" | "flows" | "automations";
 
 type Props = {
   open: boolean;
@@ -102,6 +104,7 @@ export function CommandPalette(props: Props) {
             <Item value="nueva petición crear" onSelect={run(props.onNewRequest)} icon={<Plus size={14} />}>Nueva petición</Item>
             <Item value="nueva carpeta crear" onSelect={run(props.onNewFolder)} icon={<FolderPlus size={14} />}>Nueva carpeta</Item>
             <Item value="abrir flow flujo" onSelect={run(() => props.onOpenView("flows"))} icon={<Workflow size={14} />}>Abrir Flow</Item>
+            <Item value="automatizaciones programadas tareas reloj" onSelect={run(() => props.onOpenView("automations"))} icon={<Clock size={14} />}>Abrir automatizaciones</Item>
             <Item value="editar environment variables" onSelect={run(() => props.onOpenView("environment"))} icon={<Pencil size={14} />}>Editar environment</Item>
             <Item value="historial" onSelect={run(props.onOpenHistory)} icon={<Clock3 size={14} />}>Ver historial</Item>
             <Item value="settings ajustes configuración" onSelect={run(() => props.onOpenView("settings"))} icon={<Settings size={14} />}>Abrir settings</Item>
@@ -110,7 +113,7 @@ export function CommandPalette(props: Props) {
           {props.workspaces.length > 1 ? (
             <Command.Group heading="Workspaces">
               {props.workspaces.map((workspace) => (
-                <Item key={workspace.id} value={`workspace ${workspace.name}`} onSelect={run(() => props.onChangeWorkspace(workspace.id))} icon={<Layers size={14} />} hint={workspace.id === props.activeWorkspaceId ? "activo" : undefined}>
+                <Item key={workspace.id} value={`workspace ${workspace.name}`} onSelect={run(() => props.onChangeWorkspace(workspace.id))} icon={<Home size={14} />} hint={workspace.id === props.activeWorkspaceId ? "activo" : undefined}>
                   {workspace.name}
                 </Item>
               ))}
@@ -120,7 +123,7 @@ export function CommandPalette(props: Props) {
           {props.environments.length ? (
             <Command.Group heading="Environments">
               {props.environments.map((environment) => (
-                <Item key={environment.id} value={`environment ${environment.name}`} onSelect={run(() => props.onChangeEnvironment(environment.id))} icon={<FileJson2 size={14} />} hint={environment.id === props.activeEnvironmentId ? "activo" : undefined}>
+                <Item key={environment.id} value={`environment ${environment.name}`} onSelect={run(() => props.onChangeEnvironment(environment.id))} icon={<Layers size={14} />} hint={environment.id === props.activeEnvironmentId ? "activo" : undefined}>
                   {environment.name}
                 </Item>
               ))}

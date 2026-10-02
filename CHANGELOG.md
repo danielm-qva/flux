@@ -6,6 +6,27 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-10-02
+
+Esta versión permite ejecutar peticiones de forma automática, por ejemplo para renovar un token cada pocos minutos, y mejora la barra superior.
+
+### Añadido
+
+- Automatizaciones: una petición guardada puede ejecutarse sola cada cierto tiempo (desde 15 segundos) mientras Flux esté abierto.
+- Al responder bien, guarda valores de la respuesta (por ruta, p. ej. `$.access_token`) en variables de un environment, por ejemplo para renovar un token.
+- Reintentos con espera, aviso al fallar y pausa automática tras varios fallos seguidos.
+- Botón de reloj en la petición, vista «Automatizaciones» con cuenta atrás, estado e historial, e indicador en la barra superior.
+- Las peticiones automatizadas se marcan con un reloj en su pestaña, y las automatizaciones aparecen en la paleta de comandos.
+- El registro de ejecuciones solo guarda estado, duración y nombres de variables; nunca los valores guardados ni el cuerpo de la respuesta.
+
+### Cambiado
+
+- Los selectores de la barra superior llevan icono: una casita para los workspaces y capas para los environments (también en la paleta de comandos).
+
+### Notas
+
+- Las automatizaciones se ejecutan solo mientras Flux está abierto y únicamente en el workspace activo.
+
 ## [3.5.0] - 2026-10-01
 
 Esta versión renueva por completo la interfaz de Flux (más limpia, con paneles y temas) y convierte Flow en una herramienta para encadenar peticiones sin escribir variables a mano.
@@ -180,6 +201,7 @@ Primera release estable de Flux para Windows.
 - Verificación criptográfica obligatoria de los paquetes de actualización.
 - Clave privada de actualizaciones excluida del repositorio.
 
+[3.6.0]: https://github.com/danielm-qva/flux/releases/tag/v3.6.0
 [3.5.0]: https://github.com/danielm-qva/flux/releases/tag/v3.5.0
 [3.2.0]: https://github.com/danielm-qva/flux/releases/tag/v3.2.0
 [3.1.0]: https://github.com/danielm-qva/flux/releases/tag/v3.1.0
