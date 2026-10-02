@@ -1,4 +1,5 @@
 mod auth;
+mod automation;
 mod database;
 mod flow;
 mod organization;
@@ -6,7 +7,7 @@ mod request;
 mod workspace;
 mod workspace_transfer;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -34,6 +35,13 @@ pub fn run() {
             organization::list_request_history,
             organization::record_request_history,
             organization::clear_request_history,
+            automation::list_automations,
+            automation::create_automation,
+            automation::update_automation,
+            automation::set_automation_enabled,
+            automation::delete_automation,
+            automation::record_automation_run,
+            automation::list_automation_runs,
             flow::list_request_flows,
             flow::create_request_flow,
             flow::rename_request_flow,
@@ -74,6 +82,16 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)?;
             database::initialize(&database_path)?;
             app.manage(database::DatabaseState::new(database_path));
+
+            // Reloj de las automatizaciones: solo avisa; la ejecución ocurre en la interfaz.
+            let tick_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+                loop {
+                    interval.tick().await;
+                    let _ = tick_handle.emit("automation://tick", chrono::Utc::now().to_rfc3339());
+                }
+            });
 
             #[cfg(desktop)]
             if let (Some(window), Some(icon)) =

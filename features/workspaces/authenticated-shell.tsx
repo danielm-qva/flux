@@ -5,6 +5,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import {
   ArrowLeft,
   ChevronDown,
+  Clock,
   Clock3,
   FileJson2,
   FolderKanban,
@@ -38,6 +39,8 @@ import { FlowsView } from "@/features/flows/flows-view";
 import { createFlowFromRequests, parseGraph, requestFlowApi, type RequestFlow } from "@/features/flows/flow-client";
 import { suggestExtractions } from "@/features/flows/suggest-extractions";
 import { ThemePicker } from "@/features/settings/theme-picker";
+import { AutomationsView } from "@/features/automations/automations-view";
+import { useAutomations } from "@/features/automations/use-automations";
 import {
   requestFolderApi,
   requestHistoryApi,
@@ -69,7 +72,7 @@ function collectFlowVariables(flows: RequestFlow[]): FlowVariable[] {
   return [...seen.values()];
 }
 
-type MainView = "request" | "environment" | "settings" | "flows";
+type MainView = "request" | "environment" | "settings" | "flows" | "automations";
 
 export function AuthenticatedShell({ user, onLogout }: Props) {
   const requestListRef = useRef<HTMLDivElement>(null);
@@ -639,6 +642,15 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     }
   }
 
+  const automations = useAutomations({
+    userId: user.id,
+    workspaceId: activeWorkspaceId,
+    requests,
+    onVariableSaved: mergeVariable,
+  });
+  const activeAutomations = automations.items.filter((item) => item.enabled).length;
+  const automatedIds = useMemo(() => new Set(automations.items.map((item) => item.requestId)), [automations.items]);
+
   function mergeVariable(saved: EnvironmentVariable) {
     if (saved.environmentId !== activeEnvironmentId) return;
     setVariables((items) => {
@@ -907,6 +919,19 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                 <button type="button" onClick={() => void leaveRequestView("flows")} title="Abrir Flow" aria-label="Abrir Flow" className={`mx-1 inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${mainView === "flows" ? "bg-[var(--flux-primary-soft)] text-white ring-1 ring-[var(--flux-primary-border)]" : "text-zinc-200 bg-white/[0.05] ring-1 ring-white/[0.08] hover:bg-white/[0.1] hover:ring-white/[0.16] active:scale-95"}`}><Workflow size={14} /><span className="hidden sm:inline">Flow</span></button>
               </>
             ) : null}
+            {automations.items.length ? (
+              <button
+                type="button"
+                onClick={() => void leaveRequestView("automations")}
+                title="Automatizaciones"
+                aria-label="Abrir automatizaciones"
+                className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition ${mainView === "automations" ? "bg-[var(--flux-primary-soft)] text-white ring-1 ring-[var(--flux-primary-border)]" : "bg-white/[0.05] text-zinc-200 ring-1 ring-white/[0.08] hover:bg-white/[0.1]"}`}
+              >
+                <Clock size={13} />
+                {activeAutomations ? <span className="size-1.5 rounded-full bg-emerald-400" /> : null}
+                <span className="hidden sm:inline">{activeAutomations}</span>
+              </button>
+            ) : null}
             <ThemePicker />
             <IconButton label="Abrir settings" active={mainView === "settings"} onClick={() => void leaveRequestView("settings")}><Settings size={14} /></IconButton>
             <div className="ml-1 grid size-6 shrink-0 place-items-center rounded-full bg-white/[0.08] text-[10px] font-semibold text-white">
@@ -933,6 +958,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                 activeId={activeRequestId}
                 dirtyIds={dirtyRequestIds}
                 statusById={statusById}
+                automatedIds={automatedIds}
                 onSelect={(id) => { const request = requests.find((item) => item.id === id); if (request) void openRequest(request); }}
                 onClose={(id) => void closeRequestTab(id)}
                 onNew={() => setRequestForm(true)}
@@ -947,6 +973,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
                       workspace={activeWorkspace}
                       variables={activeEnvironment ? variables : []}
                       flowVariables={flowVariables}
+                      automations={automations}
                       environments={environments}
                       activeEnvironmentId={activeEnvironmentId}
                       onVariableSaved={mergeVariable}
@@ -993,6 +1020,14 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               lastBodyByRequestId={lastBodyByRequestId}
               onRequestUpdated={(saved) => setRequests((items) => items.map((item) => (item.id === saved.id ? saved : item)))}
               onFlowsChange={handleFlowsChange}
+            />
+          ) : null}
+          {activeWorkspace && mainView === "automations" ? (
+            <AutomationsView
+              userId={user.id}
+              api={automations}
+              requests={requests}
+              onOpenRequest={(request) => void openRequest(request)}
             />
           ) : null}
           {mainView === "settings" ? <SettingsView currentVersion={systemVersion} userId={user.id} workspace={activeWorkspace} onWorkspaceImported={(result) => void workspaceImported(result)} /> : null}

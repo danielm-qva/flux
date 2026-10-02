@@ -7,6 +7,7 @@ import {
   ChevronDown,
   CirclePlus,
   ClipboardPaste,
+  Clock,
   Copy,
   FileUp,
   LoaderCircle,
@@ -45,6 +46,8 @@ import { JsonTree } from "./json-tree";
 import { SaveToEnvironmentDialog } from "./save-to-environment-dialog";
 import { EnvironmentAutocomplete } from "./environment-autocomplete";
 import { parseCurlCommand } from "./curl-parser";
+import { AutomationPanel } from "@/features/automations/automation-panel";
+import type { AutomationsApi } from "@/features/automations/use-automations";
 
 const HTTP_METHODS = [
   "GET",
@@ -82,6 +85,7 @@ export function RequestBuilder({
   workspace,
   variables,
   flowVariables = [],
+  automations,
   environments,
   activeEnvironmentId,
   onVariableSaved,
@@ -96,6 +100,7 @@ export function RequestBuilder({
   workspace: Workspace;
   variables: EnvironmentVariable[];
   flowVariables?: { key: string; from: string }[];
+  automations?: AutomationsApi;
   environments: Environment[];
   activeEnvironmentId: string;
   onVariableSaved: (variable: EnvironmentVariable) => void;
@@ -149,6 +154,8 @@ export function RequestBuilder({
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [curlImporterOpen, setCurlImporterOpen] = useState(false);
+  const [automationOpen, setAutomationOpen] = useState(false);
+  const automation = automations?.items.find((item) => item.requestId === request.id) ?? null;
   const [envTarget, setEnvTarget] = useState<{ path: string; value: string } | null>(null);
   const [requestHeight, setRequestHeight] = useState(280);
   const containerRef = useRef<HTMLElement>(null);
@@ -473,6 +480,18 @@ export function RequestBuilder({
         >
           {saving ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}
         </button>
+        {automations ? (
+          <button
+            type="button"
+            onClick={() => setAutomationOpen(true)}
+            title={automation ? (automation.enabled ? "Automatización activa" : "Automatización en pausa") : "Automatizar esta petición"}
+            aria-label="Automatizar petición"
+            className={`relative grid size-9 shrink-0 place-items-center rounded-md transition hover:bg-white/[0.06] hover:text-white ${automation?.enabled ? "text-[var(--flux-primary-text)]" : "text-muted-foreground"}`}
+          >
+            <Clock size={14} />
+            {automation?.enabled ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-emerald-400" /> : null}
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => setCurlImporterOpen(true)}
@@ -582,6 +601,17 @@ export function RequestBuilder({
         loading={sending}
         onSaveToEnv={(path, value) => setEnvTarget({ path, value })}
       />
+      {automationOpen && automations ? (
+        <AutomationPanel
+          request={request}
+          automation={automation}
+          environments={environments}
+          activeEnvironmentId={activeEnvironmentId}
+          lastResponseBody={response?.body}
+          api={automations}
+          onClose={() => setAutomationOpen(false)}
+        />
+      ) : null}
       {curlImporterOpen ? (
         <CurlImportDialog
           onClose={() => setCurlImporterOpen(false)}

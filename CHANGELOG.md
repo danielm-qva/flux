@@ -6,6 +6,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+### Añadido
+
+- Automatizaciones: una petición guardada puede ejecutarse sola cada cierto tiempo (desde 15 segundos) mientras Flux esté abierto.
+- Al responder bien, guarda valores de la respuesta (por ruta, p. ej. `$.access_token`) en variables de un environment, por ejemplo para renovar un token.
+- Reintentos con espera, aviso al fallar y pausa automática tras varios fallos seguidos.
+- Botón de reloj en la petición, vista «Automatizaciones» con cuenta atrás, estado e historial, e indicador en la barra superior.
+
 ## [3.5.0] - 2026-10-01
 
 Esta versión renueva por completo la interfaz de Flux (más limpia, con paneles y temas) y convierte Flow en una herramienta para encadenar peticiones sin escribir variables a mano.

@@ -148,6 +148,44 @@ pub fn initialize(path: &Path) -> Result<()> {
 
         CREATE INDEX IF NOT EXISTS idx_request_flows_workspace
             ON request_flows(workspace_id);
+
+        CREATE TABLE IF NOT EXISTS automations (
+            id                   TEXT PRIMARY KEY NOT NULL,
+            workspace_id         TEXT NOT NULL,
+            request_id           TEXT NOT NULL,
+            environment_id       TEXT,
+            name                 TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 100),
+            enabled              INTEGER NOT NULL DEFAULT 1,
+            schedule_json        TEXT NOT NULL,
+            actions_json         TEXT NOT NULL,
+            next_run_at          TEXT,
+            last_run_at          TEXT,
+            last_status          TEXT,
+            consecutive_failures INTEGER NOT NULL DEFAULT 0,
+            created_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(workspace_id)   REFERENCES workspaces(id)     ON DELETE CASCADE,
+            FOREIGN KEY(request_id)     REFERENCES saved_requests(id) ON DELETE CASCADE,
+            FOREIGN KEY(environment_id) REFERENCES environments(id)   ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_automations_workspace
+            ON automations(workspace_id);
+
+        CREATE TABLE IF NOT EXISTS automation_runs (
+            id            TEXT PRIMARY KEY NOT NULL,
+            automation_id TEXT NOT NULL,
+            started_at    TEXT NOT NULL,
+            duration_ms   INTEGER,
+            status        TEXT NOT NULL,
+            http_status   INTEGER,
+            error         TEXT,
+            saved_vars    TEXT,
+            FOREIGN KEY(automation_id) REFERENCES automations(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_automation_runs
+            ON automation_runs(automation_id, started_at DESC);
         ",
     )?;
 
