@@ -11,6 +11,7 @@ type Props = {
   variables: EnvironmentVariable[];
   placeholder?: string;
   className?: string;
+  wrapperClassName?: string;
   id?: string;
   ariaLabel?: string;
   multiline?: boolean;
@@ -23,6 +24,7 @@ export function EnvironmentAutocomplete({
   variables,
   placeholder,
   className,
+  wrapperClassName,
   id,
   ariaLabel,
   multiline = false,
@@ -147,13 +149,13 @@ export function EnvironmentAutocomplete({
 
   return (
     <div
-      className={`relative min-w-0 ${highlightVariables ? "rounded-lg bg-[#1b112c]" : ""}`}
+      className={`relative min-w-0 ${highlightVariables ? "rounded-md bg-[var(--flux-well)] ring-1 ring-[var(--flux-line)] transition-shadow focus-within:ring-[var(--flux-primary-border)] focus-within:shadow-[0_0_0_3px_var(--flux-primary-soft)]" : ""} ${wrapperClassName ?? ""}`}
     >
       {highlightVariables && !multiline && value ? (
         <div
           ref={highlightRef}
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 overflow-hidden px-3 font-mono text-xs whitespace-pre"
+          className="pointer-events-none absolute inset-0 overflow-hidden px-3 font-mono text-sm whitespace-pre"
         >
           <div className="flex h-full min-w-max items-center">
             <HighlightedValue value={value} />
