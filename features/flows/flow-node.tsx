@@ -37,9 +37,9 @@ export type RequestFlowNode = Node<RequestNodeData, "request">;
 
 const METHOD_COLORS: Record<string, string> = {
   GET: "text-emerald-300",
-  POST: "text-amber-300",
-  PUT: "text-sky-300",
-  PATCH: "text-violet-300",
+  POST: "text-sky-300",
+  PUT: "text-purple-300",
+  PATCH: "text-amber-300",
   DELETE: "text-rose-300",
   HEAD: "text-emerald-200",
   OPTIONS: "text-pink-300",
@@ -63,7 +63,7 @@ export function RequestFlowNodeView({ id, data, selected }: NodeProps<RequestFlo
   return (
     <div
       style={data.introDelay !== undefined ? { animationDelay: `${data.introDelay}ms` } : undefined}
-      className={`${data.introDelay !== undefined ? "flux-node-in " : ""}min-w-[190px] max-w-[240px] rounded-xl border group bg-[var(--flux-panel)] px-3 py-2.5 shadow-lg shadow-black/40 transition-colors ${
+      className={`${data.introDelay !== undefined ? "flux-node-in " : ""}min-w-[190px] max-w-[240px] rounded-2xl border group bg-[var(--flux-raised)] px-4 py-4 transition-colors ${
         selected ? "border-violet-400/70" : STATUS_RING[data.status]
       }`}
     >

@@ -1,5 +1,7 @@
 "use client";
 
+import { AppSelect } from "@/components/ui/app-select";
+
 import {
   addEdge,
   Background,
@@ -178,12 +180,12 @@ export function FlowsView({
 
   return (
     <FlowRequestsContext.Provider value={requestsById}>
-      <div className="flex h-full w-full min-h-0 flex-col overflow-hidden rounded-xl bg-[var(--flux-panel-2)] ring-1 ring-[var(--flux-line)]">
+      <div className="fx-flows flex h-full w-full min-h-0 flex-col overflow-hidden rounded-xl bg-[var(--flux-panel-2)] ring-1 ring-[var(--flux-line)]">
         <div className="flex h-11 shrink-0 items-center gap-2 px-3">
           <Workflow size={15} className="text-violet-400" />
-          <select
+          <AppSelect
             value={flowId}
-            onChange={(event) => setFlowId(event.target.value)}
+            onValueChange={(value) => setFlowId(value)}
             className="h-8 w-[200px] rounded-md bg-[var(--flux-well)] px-2 text-xs text-white ring-1 ring-[var(--flux-line)] outline-none focus:ring-[var(--flux-primary-border)]"
           >
             <option value="">Sin flujo</option>
@@ -192,7 +194,7 @@ export function FlowsView({
                 {flow.name}
               </option>
             ))}
-          </select>
+          </AppSelect>
           <button
             type="button"
             onClick={() => setDialog("create")}

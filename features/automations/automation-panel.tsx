@@ -1,5 +1,7 @@
 "use client";
 
+import { AppSelect } from "@/components/ui/app-select";
+
 import { Clock, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
@@ -122,11 +124,11 @@ export function AutomationPanel({
                 onChange={(event) => setEvery(Math.max(1, Number(event.target.value) || 1))}
                 className={`${field} h-9 w-20 font-mono`}
               />
-              <select value={unit} onChange={(event) => setUnit(event.target.value as Unit)} className={`${field} h-9`}>
+              <AppSelect value={unit} onValueChange={(value) => setUnit(value as Unit)} className={`${field} h-9`}>
                 <option value="s">segundos</option>
                 <option value="min">minutos</option>
                 <option value="h">horas</option>
-              </select>
+              </AppSelect>
             </div>
             {tooFast ? <p className="text-[11px] text-rose-300">El mínimo es 15 segundos.</p> : null}
             <label className="flex items-center gap-2 text-xs text-zinc-300">
@@ -136,14 +138,14 @@ export function AutomationPanel({
           </Section>
 
           <Section title="Al responder bien, guardar en el environment">
-            <select value={environmentId} onChange={(event) => setEnvironmentId(event.target.value)} className={`${field} h-9 w-full`}>
+            <AppSelect value={environmentId} onValueChange={(value) => setEnvironmentId(value)} className={`${field} h-9 w-full`}>
               <option value="">Elige un environment…</option>
               {environments.map((environment) => (
                 <option key={environment.id} value={environment.id}>
                   {environment.name}
                 </option>
               ))}
-            </select>
+            </AppSelect>
             {saves.map((row) => (
               <div key={row.id} className="flex items-center gap-1.5">
                 <input value={row.path} onChange={(event) => patchSave(row.id, { path: event.target.value })} placeholder="$.access_token" spellCheck={false} className={`${field} h-9 flex-1 font-mono text-sky-200`} />

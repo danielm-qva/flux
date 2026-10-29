@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
+  <title>Flux</title>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="#161917"/>
+  <rect x="36" y="36" width="952" height="952" rx="220" stroke="#2a2f2c" stroke-width="8"/>
+  <g fill="#ff8552" transform="translate(-12 0)">
+    <path d="M440 250C336 250 286 304 286 405V426H236V504H286V750H380V504H470V426H380V405C380 356 400 338 446 338H480V250H440Z"/>
+    <path d="M492 426H596L660 522L724 426H828L712 580L830 750H722L658 641L590 750H482L605 579L492 426Z"/>
+  </g>
+</svg>

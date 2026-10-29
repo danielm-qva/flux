@@ -43,6 +43,10 @@ jobs:
           npm run lint
           npm run build:web
 
+      - name: Read version changelog
+        id: notes
+        run: node scripts/release-notes.mjs --github-output
+
       - name: Build, sign and publish release
         uses: tauri-apps/tauri-action@v1
         env:
@@ -52,7 +56,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: "Flux v__VERSION__"
-          releaseBody: ${{ inputs.release_notes || 'Consulta CHANGELOG.md para conocer todos los cambios de esta versión.' }}
+          releaseBody: ${{ inputs.release_notes || steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false
           args: "--bundles nsis"
