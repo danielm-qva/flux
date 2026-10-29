@@ -16,6 +16,7 @@ type Props = {
   ariaLabel?: string;
   multiline?: boolean;
   highlightVariables?: boolean;
+  variableChips?: boolean;
 };
 
 export function EnvironmentAutocomplete({
@@ -29,7 +30,10 @@ export function EnvironmentAutocomplete({
   ariaLabel,
   multiline = false,
   highlightVariables = false,
+  variableChips = false,
 }: Props) {
+  const [focused, setFocused] = useState(false);
+  const showHighlight = highlightVariables && (!variableChips || !focused);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const [token, setToken] = useState<{
@@ -132,7 +136,7 @@ export function EnvironmentAutocomplete({
     },
     onFocus: (
       event: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>,
-    ) => inspect(event.currentTarget),
+    ) => { setFocused(true); inspect(event.currentTarget); },
     onKeyUp: (
       event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
     ) => {
@@ -144,21 +148,21 @@ export function EnvironmentAutocomplete({
     onScroll: (
       event: React.UIEvent<HTMLInputElement | HTMLTextAreaElement>,
     ) => syncHighlightScroll(event.currentTarget),
-    onBlur: () => window.setTimeout(() => setToken(null), 120),
+    onBlur: () => { setFocused(false); window.setTimeout(() => setToken(null), 120); },
   };
 
   return (
     <div
       className={`relative min-w-0 ${highlightVariables ? "rounded-md bg-[var(--flux-well)] ring-1 ring-[var(--flux-line)] transition-shadow focus-within:ring-[var(--flux-primary-border)] focus-within:shadow-[0_0_0_3px_var(--flux-primary-soft)]" : ""} ${wrapperClassName ?? ""}`}
     >
-      {highlightVariables && !multiline && value ? (
+      {showHighlight && !multiline && value ? (
         <div
           ref={highlightRef}
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 overflow-hidden px-3 font-mono text-sm whitespace-pre"
         >
           <div className="flex h-full min-w-max items-center">
-            <HighlightedValue value={value} />
+            <HighlightedValue value={value} chips={variableChips} variables={variables} />
           </div>
         </div>
       ) : null}
@@ -179,8 +183,8 @@ export function EnvironmentAutocomplete({
           id={id}
           aria-label={ariaLabel}
           style={
-            highlightVariables && value
-              ? { color: "transparent", caretColor: "white" }
+            showHighlight && value
+              ? { color: "transparent", caretColor: "var(--foreground)" }
               : undefined
           }
           {...shared}
@@ -219,11 +223,13 @@ export function EnvironmentAutocomplete({
   );
 }
 
-function HighlightedValue({ value }: { value: string }) {
+function HighlightedValue({ value, chips = false, variables = [] }: { value: string; chips?: boolean; variables?: EnvironmentVariable[] }) {
   return (
     <>
       {value.split(/(\{\{[A-Za-z_][A-Za-z0-9_]*\}\})/g).map((part, index) =>
-        /^\{\{.+\}\}$/.test(part) ? (
+        /^\{\{.+\}\}$/.test(part) ? chips ? (
+          <span key={`${part}-${index}`} className={`fx-variable-chip ${variables.some((variable) => variable.key.toUpperCase() === part.slice(2, -2).toUpperCase() && variable.value) ? "" : "is-missing"}`} title={`${part.slice(2, -2)} · ${variables.some((variable) => variable.key.toUpperCase() === part.slice(2, -2).toUpperCase() && variable.value) ? "Variable disponible" : "Sin valor en este entorno"}`}>{part.slice(2, -2)}</span>
+        ) : (
           <span
             key={`${part}-${index}`}
             className="font-semibold text-amber-300"

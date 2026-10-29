@@ -4,8 +4,8 @@ import { Clock, Plus, X } from "lucide-react";
 import type { SavedRequest } from "./request-client";
 
 const methodColors: Record<string, string> = {
-  GET: "text-emerald-300", POST: "text-amber-300", PUT: "text-sky-300",
-  PATCH: "text-violet-300", DELETE: "text-rose-300", HEAD: "text-emerald-200",
+  GET: "text-emerald-300", POST: "text-sky-300", PUT: "text-purple-300",
+  PATCH: "text-amber-300", DELETE: "text-rose-300", HEAD: "text-emerald-200",
   OPTIONS: "text-pink-300",
 };
 

@@ -1,53 +1,96 @@
 "use client";
 
-import { Check, Palette, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { savePreferences, usePreferences } from "./preferences";
 import { UpdateControl } from "@/features/updater/update-control";
 import { WorkspaceTransfer } from "@/features/workspaces/workspace-transfer";
 import type { Workspace } from "@/features/workspaces/workspace-client";
 import type { WorkspaceImport } from "@/features/workspaces/workspace-transfer-client";
 
-export type ThemeId = "ultraviolet" | "arctic" | "amber" | "graphite" | "emerald" | "rose" | "blue";
-export const THEMES: Array<{ id: ThemeId; name: string; description: string; colors: string[] }> = [
-  { id: "ultraviolet", name: "Ultravioleta", description: "Ciruela profunda con primary violeta.", colors: ["#0b0715", "#181022", "#7c3cff", "#c4b5fd"] },
-  { id: "arctic", name: "Cian Ártico", description: "Azul petróleo con primary cian.", colors: ["#041116", "#0d2a34", "#0891b2", "#67e8f9"] },
-  { id: "amber", name: "Ámbar Carbono", description: "Grafito profundo con primary ámbar.", colors: ["#0c0d0f", "#242117", "#d99a24", "#f8d27a"] },
-  { id: "graphite", name: "Grafito", description: "Gris neutro, sin color de más.", colors: ["#08090a", "#1c1f23", "#6b7280", "#d4d4d8"] },
-  { id: "emerald", name: "Esmeralda", description: "Verde bosque con primary esmeralda.", colors: ["#040b08", "#10261d", "#059669", "#6ee7b7"] },
-  { id: "rose", name: "Rosa", description: "Burdeos suave con primary rosa.", colors: ["#0d0609", "#2a1520", "#e11d48", "#fda4af"] },
-  { id: "blue", name: "Azul", description: "Medianoche con primary azul.", colors: ["#050813", "#141e42", "#3b6cf0", "#a5c0ff"] },
+export type ThemeId = "night" | "day";
+export const THEMES: Array<{
+  id: ThemeId;
+  name: string;
+  description: string;
+  colors: string[];
+}> = [
+  {
+    id: "night",
+    name: "Noche",
+    description: "Verde carbón y acento naranja.",
+    colors: ["#0f1110", "#161917", "#ff8552", "#eceee6"],
+  },
+  {
+    id: "day",
+    name: "Día",
+    description: "Papel cálido y acento terracota.",
+    colors: ["#f3f2ec", "#faf9f5", "#c2410c", "#191b18"],
+  },
 ];
 
 export function applyTheme(id: ThemeId) {
   document.documentElement.dataset.fluxTheme = id;
-  try { window.localStorage.setItem("flux.color-theme", id); } catch { /* sin almacenamiento */ }
+  try {
+    window.localStorage.setItem("flux.color-theme", id);
+  } catch {
+    /* sin almacenamiento */
+  }
   window.dispatchEvent(new CustomEvent("flux-theme-change", { detail: id }));
 }
 
 export function applyContrast(high: boolean) {
   if (high) document.documentElement.dataset.fluxContrast = "high";
   else delete document.documentElement.dataset.fluxContrast;
-  try { window.localStorage.setItem("flux.contrast", high ? "high" : "normal"); } catch { /* sin almacenamiento */ }
+  try {
+    window.localStorage.setItem("flux.contrast", high ? "high" : "normal");
+  } catch {
+    /* sin almacenamiento */
+  }
   window.dispatchEvent(new CustomEvent("flux-theme-change"));
 }
 
 export function ThemeRuntime() {
+  const preferences = usePreferences();
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--fx-code-size",
+      `${preferences.codeSize}px`,
+    );
+  }, [preferences.codeSize]);
   useEffect(() => {
     try {
-      if (window.localStorage.getItem("flux.contrast") === "high") document.documentElement.dataset.fluxContrast = "high";
-    } catch { /* sin almacenamiento */ }
+      if (window.localStorage.getItem("flux.contrast") === "high")
+        document.documentElement.dataset.fluxContrast = "high";
+    } catch {
+      /* sin almacenamiento */
+    }
     const saved = window.localStorage.getItem("flux.color-theme");
-    document.documentElement.dataset.fluxTheme = saved === "coral" ? "amber" : THEMES.some((item) => item.id === saved) ? saved! : "ultraviolet";
+    document.documentElement.dataset.fluxTheme = THEMES.some(
+      (item) => item.id === saved,
+    )
+      ? saved!
+      : "night";
   }, []);
   return null;
 }
 
-export function SettingsView({ currentVersion, userId, workspace, onWorkspaceImported }: { currentVersion: string | null; userId: string; workspace: Workspace | null; onWorkspaceImported: (result: WorkspaceImport) => void }) {
+export function SettingsView({
+  currentVersion,
+  userId,
+  workspace,
+  onWorkspaceImported,
+}: {
+  currentVersion: string | null;
+  userId: string;
+  workspace: Workspace | null;
+  onWorkspaceImported: (result: WorkspaceImport) => void;
+}) {
   const [theme, setTheme] = useState<ThemeId>(() => {
-    if (typeof window === "undefined") return "ultraviolet";
+    if (typeof window === "undefined") return "night";
     const saved = window.localStorage.getItem("flux.color-theme");
-    if (saved === "coral") return "amber";
-    return THEMES.some((item) => item.id === saved) ? (saved as ThemeId) : "ultraviolet";
+    return THEMES.some((item) => item.id === saved)
+      ? (saved as ThemeId)
+      : "night";
   });
 
   useEffect(() => {
@@ -64,25 +107,123 @@ export function SettingsView({ currentVersion, userId, workspace, onWorkspaceImp
     window.localStorage.setItem("flux.color-theme", theme);
   }, [theme]);
 
-  return <section className="mx-auto w-full max-w-4xl self-start py-3">
-    <div className="flex items-center gap-3"><div className="grid size-10 place-items-center rounded-xl border border-violet-300/10 bg-violet-500/10 text-violet-300"><Palette size={18} /></div><div><p className="font-mono text-[9px] tracking-[0.17em] text-violet-300 uppercase">Personalización</p><h1 className="mt-1 text-xl font-semibold text-white">Settings</h1></div></div>
-    <p className="mt-4 max-w-xl text-xs leading-5 text-muted-foreground">Ajusta la identidad visual de Flux y administra las actualizaciones de la aplicación.</p>
-
-    <div className="mt-7 rounded-2xl border border-white/[0.07] bg-[#120c1e]/90 p-5">
-      <div className="flex items-center justify-between"><div><h2 className="text-sm font-semibold text-white">Tema de color</h2><p className="mt-1 text-[11px] text-muted-foreground">Cambia el acento sin alterar la legibilidad del editor.</p></div><span className="rounded-full border border-white/[0.07] px-2.5 py-1 text-[9px] text-muted-foreground">Se guarda automáticamente</span></div>
-      <div className="mt-5 grid grid-cols-4 gap-3 max-xl:grid-cols-2 max-sm:grid-cols-1">{THEMES.map((item) => <button key={item.id} type="button" onClick={() => setTheme(item.id)} className={`relative overflow-hidden rounded-xl border p-4 text-left transition ${theme === item.id ? "border-violet-400/35 bg-violet-500/[0.08]" : "border-white/[0.07] bg-black/10 hover:border-white/15"}`}>
-        <span className="flex gap-1.5">{item.colors.map((color) => <span key={color} className="h-6 flex-1 rounded-md" style={{ backgroundColor: color }} />)}</span><span className="mt-4 flex items-center justify-between"><span><span className="block text-xs font-medium text-white">{item.name}</span><span className="mt-1 block text-[10px] text-muted-foreground">{item.description}</span></span>{theme === item.id ? <span className="grid size-6 place-items-center rounded-full bg-violet-500 text-white"><Check size={12} /></span> : null}</span>
-      </button>)}</div>
-    </div>
-
-    <div className="mt-4 rounded-2xl border border-white/[0.07] bg-[#120c1e]/90 p-5">
-      <div className="mb-4"><h2 className="text-sm font-semibold text-white">Portabilidad</h2><p className="mt-1 text-[11px] text-muted-foreground">Mueve un workspace completo entre instalaciones de Flux.</p></div>
-      <WorkspaceTransfer userId={userId} workspace={workspace} onImported={onWorkspaceImported}/>
-    </div>
-
-    <div className="mt-4 rounded-2xl border border-white/[0.07] bg-[#120c1e]/90 p-5">
-      <div className="mb-4 flex items-center gap-3"><RefreshCw size={15} className="text-violet-300"/><div><h2 className="text-sm font-semibold text-white">Sistema y updates</h2><p className="mt-1 text-[11px] text-muted-foreground">Busca, descarga e instala nuevas versiones firmadas.</p></div></div>
-      <UpdateControl currentVersion={currentVersion} variant="panel" autoCheck={false} />
-    </div>
-  </section>;
+  const preferences = usePreferences();
+  return (
+    <section className="fx-settings">
+      <h2>Apariencia</h2>
+      <div className="fx-setting-row">
+        <div>
+          <h3>Tema</h3>
+          <p>Noche es el predeterminado.</p>
+        </div>
+        <div className="fx-segments">
+          {THEMES.map((item) => (
+            <button
+              key={item.id}
+              aria-pressed={theme === item.id}
+              onClick={() => {
+                setTheme(item.id);
+                applyTheme(item.id);
+              }}
+            >
+              {item.name}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="fx-setting-row">
+        <h3>Tamaño de letra del código</h3>
+        <div className="fx-segments">
+          {[12, 13, 15].map((size) => (
+            <button
+              key={size}
+              aria-pressed={preferences.codeSize === size}
+              onClick={() =>
+                savePreferences({ ...preferences, codeSize: size })
+              }
+            >
+              {size}
+            </button>
+          ))}
+        </div>
+      </div>
+      <h2>Peticiones</h2>
+      <div className="fx-setting-row">
+        <div>
+          <h3>Plegar encabezados generados</h3>
+          <p>Muestra primero los que escribes tú.</p>
+        </div>
+        <input
+          className="fx-switch"
+          type="checkbox"
+          aria-label="Plegar encabezados generados"
+          checked={preferences.foldHeaders}
+          onChange={(event) =>
+            savePreferences({
+              ...preferences,
+              foldHeaders: event.target.checked,
+            })
+          }
+        />
+      </div>
+      <div className="fx-setting-row">
+        <div>
+          <h3>Sugerencias al fallar</h3>
+          <p>Explica errores como 401 o 415 y propone el arreglo.</p>
+        </div>
+        <input
+          className="fx-switch"
+          type="checkbox"
+          aria-label="Sugerencias al fallar"
+          checked={preferences.suggestions}
+          onChange={(event) =>
+            savePreferences({
+              ...preferences,
+              suggestions: event.target.checked,
+            })
+          }
+        />
+      </div>
+      <div className="fx-setting-row">
+        <div>
+          <h3>Tiempo de espera</h3>
+          <p>Cancela la petición pasado este tiempo.</p>
+        </div>
+        <label className="fx-setting-input">
+          <input
+            aria-label="Tiempo de espera en milisegundos"
+            type="number"
+            min={1000}
+            max={300000}
+            step={1000}
+            value={preferences.timeoutMs}
+            onChange={(event) => {
+              const value = event.target.valueAsNumber;
+              if (Number.isFinite(value))
+                savePreferences({
+                  ...preferences,
+                  timeoutMs: Math.min(300000, Math.max(1000, value)),
+                });
+            }}
+          />
+          <span>ms</span>
+        </label>
+      </div>
+      <h2>Portabilidad</h2>
+      <p className="mb-4 text-xs text-muted-foreground">
+        Mueve un workspace completo entre instalaciones de Flux.
+      </p>
+      <WorkspaceTransfer
+        userId={userId}
+        workspace={workspace}
+        onImported={onWorkspaceImported}
+      />
+      <h2>Sistema y actualizaciones</h2>
+      <UpdateControl
+        currentVersion={currentVersion}
+        variant="panel"
+        autoCheck={false}
+      />
+    </section>
+  );
 }

@@ -1,55 +1,64 @@
-"use client"
+"use client";
 
-import { useTheme } from "next-themes"
-import { Toaster as Sonner, type ToasterProps } from "sonner"
-import { CheckCircleIcon, InfoIcon, WarningIcon, XCircleIcon, SpinnerIcon } from "@phosphor-icons/react"
+import { useSyncExternalStore, type CSSProperties } from "react";
+import { Toaster as Sonner, type ToasterProps } from "sonner";
+import {
+  CircleCheck,
+  Info,
+  TriangleAlert,
+  CircleX,
+  LoaderCircle,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
-const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
+function subscribe(callback: () => void) {
+  window.addEventListener("flux-theme-change", callback);
+  return () => window.removeEventListener("flux-theme-change", callback);
+}
 
+export function Toaster({
+  className,
+  style,
+  toastOptions,
+  icons,
+  ...props
+}: ToasterProps) {
+  const theme = useSyncExternalStore<"light" | "dark">(
+    subscribe,
+    () =>
+      document.documentElement.dataset.fluxTheme === "day" ? "light" : "dark",
+    () => "dark",
+  );
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
-      className="toaster group"
+      theme={theme}
+      className={cn("fx-toaster", className)}
+      containerAriaLabel="Notificaciones"
       icons={{
-        success: (
-          <CheckCircleIcon className="size-4" />
-        ),
-        info: (
-          <InfoIcon className="size-4" />
-        ),
-        warning: (
-          <WarningIcon className="size-4" />
-        ),
-        error: (
-          <XCircleIcon className="size-4" />
-        ),
-        loading: (
-          <SpinnerIcon className="size-4 animate-spin" />
-        ),
+        success: <CircleCheck size={18} />,
+        info: <Info size={18} />,
+        warning: <TriangleAlert size={18} />,
+        error: <CircleX size={18} />,
+        loading: <LoaderCircle size={18} className="animate-spin" />,
+        ...icons,
       }}
       style={
         {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
+          "--normal-bg": "var(--flux-raised)",
+          "--normal-text": "var(--foreground)",
           "--normal-border": "var(--border)",
-          "--border-radius": "6px",
-        } as React.CSSProperties
+          "--border-radius": "16px",
+          ...style,
+        } as CSSProperties
       }
       toastOptions={{
+        ...toastOptions,
         classNames: {
-          toast:
-            "cn-toast !gap-2.5 !rounded-md !border-white/[0.08] !bg-[#0f0f14] !px-3 !py-2 !text-xs !shadow-lg !shadow-black/40",
-          title: "!text-xs !font-medium !text-white",
-          description: "!text-[11px] !text-muted-foreground",
-          icon: "!m-0 !size-3.5",
-          success: "[&_[data-icon]]:!text-emerald-400",
-          error: "[&_[data-icon]]:!text-rose-400",
+          ...toastOptions?.classNames,
+          toast: cn("fx-toast", toastOptions?.classNames?.toast),
         },
       }}
       {...props}
     />
-  )
+  );
 }
-
-export { Toaster }

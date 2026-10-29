@@ -6,6 +6,41 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-10-29
+
+Flux estrena una identidad visual con acento naranja, temas Día y Noche y una navegación más clara para trabajar con APIs.
+
+### Añadido
+
+- Historial como vista completa, agrupado por Hoy/Ayer y con filtros, respuesta y acceso a la petición original.
+- Pestaña Tiempos con la duración total real y el tamaño recibido.
+- Sugerencias ante respuestas 401 y 415; posibilidad de añadir el token del entorno y reenviar cuando falta Authorization.
+- Preferencias persistentes para tamaño del código, tiempo de espera, sugerencias y plegado de encabezados generados.
+- Indicadores de variables disponibles o sin valor en los campos de autorización y controles para mostrar u ocultar secretos del entorno.
+- Iconos con el monograma «fx» para web, macOS, Windows y móvil, y un comando para regenerarlos (`npm run icons:generate`).
+
+### Cambiado
+
+- Nueva paleta carbón/naranja y papel/terracota; los temas anteriores se sustituyen por Noche y Día.
+- Tipografías Instrument Sans y Spline Sans Mono.
+- Barra lateral de navegación y paneles de petición y respuesta en paralelo, con adaptación a pantallas estrechas.
+- Editores de cuerpo y autorización, búsqueda global, entornos, Flow, notificaciones, bienvenida y acceso a la cuenta adaptados a la nueva identidad.
+- Selectores con menús propios y navegación por teclado para mantener una apariencia coherente entre sistemas operativos.
+- Menús de acciones de peticiones y carpetas fuera del contenedor de desplazamiento, con posicionamiento según el espacio disponible.
+- El release de GitHub toma sus notas del changelog de la versión.
+
+### Corregido
+
+- Recortes en filas del historial y menús de acciones de la barra lateral.
+- Borde de foco desbordado del buscador y barras de desplazamiento demasiado prominentes.
+- Notificaciones que conservaban el fondo y la tipografía de la identidad anterior.
+- Cargo vuelve a generar el contexto de Tauri cuando cambian los iconos, también en desarrollo.
+
+### Notas
+
+- El desglose DNS/TCP/TLS, el proxy y los controles de SSL y redirecciones del prototipo siguen pendientes de soporte en el cliente nativo.
+- El icono del Dock requiere recompilar y reiniciar Tauri; actualizar la interfaz no sustituye el ejecutable.
+
 ## [3.6.0] - 2026-10-02
 
 Esta versión permite ejecutar peticiones de forma automática, por ejemplo para renovar un token cada pocos minutos, y mejora la barra superior.
@@ -201,6 +236,7 @@ Primera release estable de Flux para Windows.
 - Verificación criptográfica obligatoria de los paquetes de actualización.
 - Clave privada de actualizaciones excluida del repositorio.
 
+[3.7.0]: https://github.com/danielm-qva/flux/releases/tag/v3.7.0
 [3.6.0]: https://github.com/danielm-qva/flux/releases/tag/v3.6.0
 [3.5.0]: https://github.com/danielm-qva/flux/releases/tag/v3.5.0
 [3.2.0]: https://github.com/danielm-qva/flux/releases/tag/v3.2.0

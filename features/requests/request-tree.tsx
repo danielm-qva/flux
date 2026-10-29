@@ -1,11 +1,26 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Copy, FileJson2, Folder, FolderInput, FolderPlus, MoreVertical, Pencil, Plus, Trash2, Workflow } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  FileJson2,
+  Folder,
+  FolderInput,
+  FolderPlus,
+  Pencil,
+  Plus,
+  Trash2,
+  Workflow,
+} from "lucide-react";
+import { useState } from "react";
+import { ActionMenu } from "@/components/ui/action-menu";
 import type { RequestFolder, SavedRequest } from "./request-client";
 
 type Props = {
-  folders: RequestFolder[]; requests: SavedRequest[]; activeRequestId: string;
+  folders: RequestFolder[];
+  requests: SavedRequest[];
+  activeRequestId: string;
   onSelect: (request: SavedRequest) => void;
   onNewRequest: (folderId: string | null) => void;
   onNewFolder: (parentId: string | null) => void;
@@ -13,20 +28,21 @@ type Props = {
   onDeleteFolder: (folder: RequestFolder) => void;
   onFolderToFlow?: (folder: RequestFolder) => void;
   statusById?: Map<string, "ok" | "error">;
-  onRequestMenu: (request: SavedRequest, action: "rename" | "duplicate" | "move" | "delete") => void;
+  onRequestMenu: (
+    request: SavedRequest,
+    action: "rename" | "duplicate" | "move" | "delete",
+  ) => void;
 };
 
 export function RequestTree(props: Props) {
-  const root = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    const close = (event: PointerEvent) => {
-      if (event.target instanceof Node && !root.current?.contains(event.target)) root.current?.querySelectorAll("details[open]").forEach((item) => item.removeAttribute("open"));
-    };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, []);
-  const toggle = (id: string) => setCollapsed((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const toggle = (id: string) =>
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   const requestActions = [
     { action: "rename" as const, label: "Editar nombre", icon: Pencil },
     { action: "duplicate" as const, label: "Duplicar", icon: Copy },
@@ -34,35 +50,133 @@ export function RequestTree(props: Props) {
     { action: "delete" as const, label: "Eliminar", icon: Trash2 },
   ];
   const renderRequest = (request: SavedRequest) => (
-    <div key={request.id} className={`group flex h-7 items-center rounded-md pr-0.5 ${props.activeRequestId === request.id ? "bg-white/[0.07] text-white" : "text-muted-foreground hover:bg-white/[0.04] hover:text-white"}`}>
-      <button onClick={() => props.onSelect(request)} className="flex min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs">
-        {props.statusById?.get(request.id) ? <span className={`size-1.5 shrink-0 rounded-full ${props.statusById.get(request.id) === "ok" ? "bg-emerald-400" : "bg-rose-400"}`} /> : <span className="size-1.5 shrink-0" />}<span className="w-9 shrink-0 font-mono text-[9px] font-semibold text-muted-foreground">{request.method}</span><span className="truncate">{request.name}</span>
+    <div
+      key={request.id}
+      className={`fx-request-row ${props.activeRequestId === request.id ? "is-on" : ""} group flex h-7 items-center rounded-md pr-0.5 ${props.activeRequestId === request.id ? "bg-white/[0.07] text-white" : "text-muted-foreground hover:bg-white/[0.04] hover:text-white"}`}
+    >
+      <button
+        onClick={() => props.onSelect(request)}
+        className="flex min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs"
+      >
+        {props.statusById?.get(request.id) ? (
+          <span
+            className={`size-1.5 shrink-0 rounded-full ${props.statusById.get(request.id) === "ok" ? "bg-emerald-400" : "bg-rose-400"}`}
+          />
+        ) : (
+          <span className="size-1.5 shrink-0" />
+        )}
+        <span
+          className={`fx-method fx-method-${request.method.toLowerCase()} w-12 shrink-0`}
+        >
+          {request.method}
+        </span>
+        <span className="truncate">{request.name}</span>
       </button>
-      <details className="relative"><summary className="grid size-6 cursor-pointer list-none place-items-center rounded-md opacity-0 group-hover:opacity-100 [&::-webkit-details-marker]:hidden"><MoreVertical size={13}/></summary>
-        <div className="absolute top-6 right-0 z-50 flex w-40 flex-col gap-0.5 rounded-lg border border-white/10 bg-[#181022] p-1.5 shadow-2xl">
-          {requestActions.map(({ action, label, icon: Icon }) => <button key={action} onClick={(e) => { e.currentTarget.closest("details")?.removeAttribute("open"); props.onRequestMenu(request, action); }} className={`menu-item ${action === "delete" ? "text-rose-300" : ""}`}><Icon size={13} /> <span>{label}</span></button>)}
-        </div>
-      </details>
+      <ActionMenu
+        label={`Acciones de ${request.name}`}
+        actions={requestActions.map(({ action, label, icon }) => ({
+          label,
+          icon,
+          destructive: action === "delete",
+          onClick: () => props.onRequestMenu(request, action),
+        }))}
+      />
     </div>
   );
   const renderFolder = (folder: RequestFolder, depth = 0): React.ReactNode => {
-    const children = props.folders.filter((item) => item.parentId === folder.id);
+    const children = props.folders.filter(
+      (item) => item.parentId === folder.id,
+    );
     const items = props.requests.filter((item) => item.folderId === folder.id);
     const closed = collapsed.has(folder.id);
-    return <div key={folder.id} style={{ paddingLeft: depth * 10 }}>
-      <div className="group flex h-7 items-center rounded-md text-muted-foreground hover:bg-white/[0.04] hover:text-white">
-        <button onClick={() => toggle(folder.id)} className="grid size-6 place-items-center">{closed ? <ChevronRight size={13}/> : <ChevronDown size={13}/>}</button><Folder size={13} className="opacity-70"/><span className="ml-2 min-w-0 flex-1 truncate text-xs">{folder.name}</span><span className="mr-1 text-[9px] opacity-50">{items.length}</span><button onClick={() => props.onNewRequest(folder.id)} title={`Nueva petición en ${folder.name}`} className="grid size-6 place-items-center rounded-md opacity-0 hover:bg-white/10 group-hover:opacity-100 focus:opacity-100"><Plus size={13}/></button>
-        <details className="relative"><summary className="grid size-6 cursor-pointer list-none place-items-center opacity-0 group-hover:opacity-100 [&::-webkit-details-marker]:hidden"><MoreVertical size={13}/></summary><div className="absolute top-6 right-0 z-50 flex w-44 flex-col gap-0.5 rounded-lg border border-white/10 bg-[#181022] p-1.5 shadow-2xl">
-          <button onClick={() => props.onNewRequest(folder.id)} className="menu-item"><Plus size={12}/> Nueva petición</button><button onClick={() => props.onNewFolder(folder.id)} className="menu-item"><FolderPlus size={12}/> Subcarpeta</button>{props.onFolderToFlow ? <button onClick={() => props.onFolderToFlow?.(folder)} className="menu-item"><Workflow size={12}/> Convertir en Flow</button> : null}<button onClick={() => props.onRenameFolder(folder)} className="menu-item"><Pencil size={12}/> Renombrar</button><button onClick={() => props.onDeleteFolder(folder)} className="menu-item text-rose-300"><Trash2 size={12}/> Eliminar</button>
-        </div></details>
+    return (
+      <div key={folder.id} style={{ paddingLeft: depth * 10 }}>
+        <div className="fx-folder-heading group flex h-7 items-center rounded-md text-muted-foreground hover:bg-white/[0.04] hover:text-white">
+          <button
+            onClick={() => toggle(folder.id)}
+            className="grid size-6 place-items-center"
+          >
+            {closed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
+          </button>
+          <Folder size={13} className="opacity-70" />
+          <span className="ml-2 min-w-0 flex-1 truncate text-xs">
+            {folder.name}
+          </span>
+          <span className="mr-1 text-[9px] opacity-50">{items.length}</span>
+          <button
+            onClick={() => props.onNewRequest(folder.id)}
+            title={`Nueva petición en ${folder.name}`}
+            className="grid size-6 place-items-center rounded-md opacity-0 hover:bg-white/10 group-hover:opacity-100 focus:opacity-100"
+          >
+            <Plus size={13} />
+          </button>
+          <ActionMenu
+            label={`Acciones de la carpeta ${folder.name}`}
+            actions={[
+              {
+                label: "Nueva petición",
+                icon: Plus,
+                onClick: () => props.onNewRequest(folder.id),
+              },
+              {
+                label: "Subcarpeta",
+                icon: FolderPlus,
+                onClick: () => props.onNewFolder(folder.id),
+              },
+              ...(props.onFolderToFlow
+                ? [
+                    {
+                      label: "Convertir en Flow",
+                      icon: Workflow,
+                      onClick: () => props.onFolderToFlow?.(folder),
+                    },
+                  ]
+                : []),
+              {
+                label: "Renombrar",
+                icon: Pencil,
+                onClick: () => props.onRenameFolder(folder),
+              },
+              {
+                label: "Eliminar",
+                icon: Trash2,
+                destructive: true,
+                onClick: () => props.onDeleteFolder(folder),
+              },
+            ]}
+          />
+        </div>
+        {!closed ? (
+          <div className="ml-3 pl-1">
+            {children.map((item) => renderFolder(item, depth + 1))}
+            {items.map(renderRequest)}
+          </div>
+        ) : null}
       </div>
-      {!closed ? <div className="ml-3 pl-1">{children.map((item) => renderFolder(item, depth + 1))}{items.map(renderRequest)}</div> : null}
-    </div>;
+    );
   };
   const loose = props.requests.filter((item) => !item.folderId);
-  return <div ref={root} className="mt-1.5 flex min-h-0 flex-1 flex-col overflow-y-auto">
-    {props.folders.filter((item) => !item.parentId).map((item) => renderFolder(item))}
-    {loose.length ? <div className="mt-2"><p className="px-2 py-1 text-[9px] tracking-widest text-muted-foreground/60 uppercase">Sin carpeta</p>{loose.map(renderRequest)}</div> : null}
-    {!props.requests.length && !props.folders.length ? <div className="my-auto px-5 py-10 text-center"><FileJson2 size={22} className="mx-auto opacity-40"/><p className="mt-3 text-xs text-muted-foreground">Crea una carpeta o tu primera petición.</p></div> : null}
-  </div>;
+  return (
+    <div className="fx-request-tree mt-1.5 flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {props.folders
+        .filter((item) => !item.parentId)
+        .map((item) => renderFolder(item))}
+      {loose.length ? (
+        <div className="mt-2">
+          <p className="px-2 py-1 text-[9px] tracking-widest text-muted-foreground/60 uppercase">
+            Sin carpeta
+          </p>
+          {loose.map(renderRequest)}
+        </div>
+      ) : null}
+      {!props.requests.length && !props.folders.length ? (
+        <div className="my-auto px-5 py-10 text-center">
+          <FileJson2 size={22} className="mx-auto opacity-40" />
+          <p className="mt-3 text-xs text-muted-foreground">
+            Crea una carpeta o tu primera petición.
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
 }

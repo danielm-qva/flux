@@ -1,6 +1,6 @@
 {
   "name": "flux",
-  "version": "3.6.0",
+  "version": "3.7.0",
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3025",
@@ -12,7 +12,8 @@
     "lint": "eslint",
     "release:version": "node scripts/set-version.mjs",
     "tauri": "tauri",
-    "tauri:dev": "tauri dev"
+    "tauri:dev": "tauri dev",
+    "icons:generate": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

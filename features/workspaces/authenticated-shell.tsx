@@ -1,10 +1,13 @@
 "use client";
 
-import Image from "next/image";
+import { AppSelect } from "@/components/ui/app-select";
+
 import { getVersion } from "@tauri-apps/api/app";
 import {
-  ArrowLeft,
-  ChevronDown,
+  Search,
+  List,
+  Eye,
+  EyeOff,
   Clock,
   Clock3,
   Home,
@@ -12,10 +15,7 @@ import {
   FileJson2,
   FolderKanban,
   FolderPlus,
-  KeyRound,
   LogOut,
-  Copy,
-  MoreVertical,
   Plus,
   Pencil,
   Settings,
@@ -23,7 +23,14 @@ import {
   Workflow,
   MoreHorizontal,
 } from "lucide-react";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 
 import type { AuthUser } from "@/features/auth/auth-client";
@@ -38,8 +45,14 @@ import { RequestBuilder } from "@/features/requests/request-builder";
 import { RequestTree } from "@/features/requests/request-tree";
 import { RequestTabs } from "@/features/requests/request-tabs";
 import { FlowsView } from "@/features/flows/flows-view";
-import { createFlowFromRequests, parseGraph, requestFlowApi, type RequestFlow } from "@/features/flows/flow-client";
+import {
+  createFlowFromRequests,
+  parseGraph,
+  requestFlowApi,
+  type RequestFlow,
+} from "@/features/flows/flow-client";
 import { suggestExtractions } from "@/features/flows/suggest-extractions";
+import { HistoryView } from "@/features/requests/history-view";
 import { ThemePicker } from "@/features/settings/theme-picker";
 import { AutomationsView } from "@/features/automations/automations-view";
 import { useAutomations } from "@/features/automations/use-automations";
@@ -67,14 +80,16 @@ function collectFlowVariables(flows: RequestFlow[]): FlowVariable[] {
     for (const node of parseGraph(flow.graphJson).nodes) {
       for (const extraction of node.extractions ?? []) {
         const key = extraction.variable.trim();
-        if (key && !seen.has(key.toLowerCase())) seen.set(key.toLowerCase(), { key, from: flow.name });
+        if (key && !seen.has(key.toLowerCase()))
+          seen.set(key.toLowerCase(), { key, from: flow.name });
       }
     }
   }
   return [...seen.values()];
 }
 
-type MainView = "request" | "environment" | "settings" | "flows" | "automations";
+type MainView =
+  "request" | "environment" | "settings" | "flows" | "automations" | "history";
 
 export function AuthenticatedShell({ user, onLogout }: Props) {
   const requestListRef = useRef<HTMLDivElement>(null);
@@ -100,19 +115,28 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   const [requests, setRequests] = useState<SavedRequest[]>([]);
   const [folders, setFolders] = useState<RequestFolder[]>([]);
   const [folderForm, setFolderForm] = useState<string | null | undefined>();
-  const [folderToRename, setFolderToRename] = useState<RequestFolder | null>(null);
-  const [folderToDelete, setFolderToDelete] = useState<RequestFolder | null>(null);
+  const [folderToRename, setFolderToRename] = useState<RequestFolder | null>(
+    null,
+  );
+  const [folderToDelete, setFolderToDelete] = useState<RequestFolder | null>(
+    null,
+  );
   const [requestFolderId, setRequestFolderId] = useState<string | null>(null);
   const [requestToMove, setRequestToMove] = useState<SavedRequest | null>(null);
   const [history, setHistory] = useState<RequestHistoryEntry[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [requestSearch, setRequestSearch] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [introFlowId, setIntroFlowId] = useState<string | undefined>();
   const [flowVariables, setFlowVariables] = useState<FlowVariable[]>([]);
-  const handleFlowsChange = useCallback((flows: RequestFlow[]) => setFlowVariables(collectFlowVariables(flows)), []);
+  const handleFlowsChange = useCallback(
+    (flows: RequestFlow[]) => setFlowVariables(collectFlowVariables(flows)),
+    [],
+  );
   const [activeRequestId, setActiveRequestId] = useState("");
   const [openRequestIds, setOpenRequestIds] = useState<string[]>([]);
-  const [dirtyRequestIds, setDirtyRequestIds] = useState<Set<string>>(new Set());
+  const [dirtyRequestIds, setDirtyRequestIds] = useState<Set<string>>(
+    new Set(),
+  );
   const requestSavers = useRef(new Map<string, () => Promise<boolean>>());
   const [pendingRequestDelete, setPendingRequestDelete] =
     useState<SavedRequest | null>(null);
@@ -146,9 +170,11 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     function closeMenus(event: PointerEvent) {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      document.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((menu) => {
-        if (!menu.contains(target)) menu.removeAttribute("open");
-      });
+      document
+        .querySelectorAll<HTMLDetailsElement>("details[open]")
+        .forEach((menu) => {
+          if (!menu.contains(target)) menu.removeAttribute("open");
+        });
     }
     function closeOnEscape(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
@@ -186,7 +212,8 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
           try {
             items = [await seedSampleWorkspace(user.id)];
             toast.success("Te preparamos un workspace de ejemplo", {
-              description: "Abre una petición y pulsa Enviar para ver una respuesta real.",
+              description:
+                "Abre una petición y pulsa Enviar para ver una respuesta real.",
             });
           } catch {
             /* si falla el ejemplo, se muestra el estado vacío normal */
@@ -247,8 +274,14 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
 
   useEffect(() => {
     if (!activeWorkspaceId) return;
-    requestFolderApi.list(user.id, activeWorkspaceId).then(setFolders).catch((cause) => setError(String(cause)));
-    requestHistoryApi.list(user.id, activeWorkspaceId).then(setHistory).catch((cause) => setError(String(cause)));
+    requestFolderApi
+      .list(user.id, activeWorkspaceId)
+      .then(setFolders)
+      .catch((cause) => setError(String(cause)));
+    requestHistoryApi
+      .list(user.id, activeWorkspaceId)
+      .then(setHistory)
+      .catch((cause) => setError(String(cause)));
   }, [activeWorkspaceId, user.id]);
 
   useEffect(() => {
@@ -368,11 +401,15 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     if (!(await saveOpenRequest())) return;
     const name = String(form.get("name") ?? "").trim();
     const duplicated = requests.some(
-      (request) => request.name.localeCompare(name, undefined, { sensitivity: "accent" }) === 0,
+      (request) =>
+        request.name.localeCompare(name, undefined, {
+          sensitivity: "accent",
+        }) === 0,
     );
     if (duplicated) {
       toast.warning("Ese nombre ya está en uso", {
-        description: "Usa un nombre diferente para identificar la petición en este workspace.",
+        description:
+          "Usa un nombre diferente para identificar la petición en este workspace.",
       });
       return;
     }
@@ -385,7 +422,10 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
       );
       setRequests((items) => [...items, created]);
       setActiveRequestId(created.id);
-      setOpenRequestIds((ids) => [...ids.filter((id) => id !== created.id), created.id]);
+      setOpenRequestIds((ids) => [
+        ...ids.filter((id) => id !== created.id),
+        created.id,
+      ]);
       setRequestForm(false);
       setRequestFolderId(null);
       setMainView("request");
@@ -467,7 +507,9 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         (request) => request.id !== pendingRequestDelete.id,
       );
       setRequests(remaining);
-      setOpenRequestIds((ids) => ids.filter((id) => id !== pendingRequestDelete.id));
+      setOpenRequestIds((ids) =>
+        ids.filter((id) => id !== pendingRequestDelete.id),
+      );
       if (activeRequestId === pendingRequestDelete.id) {
         setActiveRequestId(remaining[0]?.id ?? "");
       }
@@ -491,8 +533,18 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     if (!requestToRename) return;
     const form = new FormData(event.currentTarget);
     const nextName = String(form.get("name") ?? "").trim();
-    if (requests.some((request) => request.id !== requestToRename.id && request.name.localeCompare(nextName, undefined, { sensitivity: "accent" }) === 0)) {
-      toast.warning("Ese nombre ya está en uso", { description: "Elige otro nombre para la petición." });
+    if (
+      requests.some(
+        (request) =>
+          request.id !== requestToRename.id &&
+          request.name.localeCompare(nextName, undefined, {
+            sensitivity: "accent",
+          }) === 0,
+      )
+    ) {
+      toast.warning("Ese nombre ya está en uso", {
+        description: "Elige otro nombre para la petición.",
+      });
       return;
     }
     try {
@@ -522,7 +574,10 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
       const duplicate = await savedRequestApi.duplicate(user.id, request.id);
       setRequests((items) => [...items, duplicate]);
       setActiveRequestId(duplicate.id);
-      setOpenRequestIds((ids) => [...ids.filter((id) => id !== duplicate.id), duplicate.id]);
+      setOpenRequestIds((ids) => [
+        ...ids.filter((id) => id !== duplicate.id),
+        duplicate.id,
+      ]);
       setMainView("request");
       setError(null);
       toast.success("Petición duplicada", {
@@ -537,26 +592,106 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   }
 
   async function createFolder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!activeWorkspace) return;
-    try { const created = await requestFolderApi.create(user.id, activeWorkspace.id, String(new FormData(event.currentTarget).get("name") ?? ""), folderForm ?? null); setFolders((items) => [...items, created]); setFolderForm(undefined); toast.success("Carpeta creada"); } catch (cause) { toast.error("No se pudo crear la carpeta", { description: String(cause) }); }
+    event.preventDefault();
+    if (!activeWorkspace) return;
+    try {
+      const created = await requestFolderApi.create(
+        user.id,
+        activeWorkspace.id,
+        String(new FormData(event.currentTarget).get("name") ?? ""),
+        folderForm ?? null,
+      );
+      setFolders((items) => [...items, created]);
+      setFolderForm(undefined);
+      toast.success("Carpeta creada");
+    } catch (cause) {
+      toast.error("No se pudo crear la carpeta", {
+        description: String(cause),
+      });
+    }
   }
   async function renameFolder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!folderToRename) return;
-    try { const updated = await requestFolderApi.rename(user.id, folderToRename.id, String(new FormData(event.currentTarget).get("name") ?? "")); setFolders((items) => items.map((item) => item.id === updated.id ? updated : item)); setFolderToRename(null); toast.success("Carpeta renombrada"); } catch (cause) { toast.error("No se pudo renombrar", { description: String(cause) }); }
+    event.preventDefault();
+    if (!folderToRename) return;
+    try {
+      const updated = await requestFolderApi.rename(
+        user.id,
+        folderToRename.id,
+        String(new FormData(event.currentTarget).get("name") ?? ""),
+      );
+      setFolders((items) =>
+        items.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setFolderToRename(null);
+      toast.success("Carpeta renombrada");
+    } catch (cause) {
+      toast.error("No se pudo renombrar", { description: String(cause) });
+    }
   }
   async function deleteFolder() {
     if (!folderToDelete) return;
-    try { await requestFolderApi.remove(user.id, folderToDelete.id); const removed = new Set([folderToDelete.id]); let found = true; while (found) { found = false; for (const folder of folders) if (folder.parentId && removed.has(folder.parentId) && !removed.has(folder.id)) { removed.add(folder.id); found = true; } } setFolders((items) => items.filter((item) => !removed.has(item.id))); setRequests((items) => items.map((item) => item.folderId && removed.has(item.folderId) ? { ...item, folderId: null } : item)); setFolderToDelete(null); toast.success("Carpeta eliminada", { description: "Las peticiones quedaron en Sin carpeta." }); } catch (cause) { toast.error("No se pudo eliminar", { description: String(cause) }); }
+    try {
+      await requestFolderApi.remove(user.id, folderToDelete.id);
+      const removed = new Set([folderToDelete.id]);
+      let found = true;
+      while (found) {
+        found = false;
+        for (const folder of folders)
+          if (
+            folder.parentId &&
+            removed.has(folder.parentId) &&
+            !removed.has(folder.id)
+          ) {
+            removed.add(folder.id);
+            found = true;
+          }
+      }
+      setFolders((items) => items.filter((item) => !removed.has(item.id)));
+      setRequests((items) =>
+        items.map((item) =>
+          item.folderId && removed.has(item.folderId)
+            ? { ...item, folderId: null }
+            : item,
+        ),
+      );
+      setFolderToDelete(null);
+      toast.success("Carpeta eliminada", {
+        description: "Las peticiones quedaron en Sin carpeta.",
+      });
+    } catch (cause) {
+      toast.error("No se pudo eliminar", { description: String(cause) });
+    }
   }
   async function moveRequest(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!requestToMove) return; const folderId = String(new FormData(event.currentTarget).get("folderId") ?? "") || null;
-    try { const moved = await savedRequestApi.move(user.id, requestToMove.id, folderId); setRequests((items) => items.map((item) => item.id === moved.id ? moved : item)); setRequestToMove(null); toast.success("Petición movida"); } catch (cause) { toast.error("No se pudo mover", { description: String(cause) }); }
+    event.preventDefault();
+    if (!requestToMove) return;
+    const folderId =
+      String(new FormData(event.currentTarget).get("folderId") ?? "") || null;
+    try {
+      const moved = await savedRequestApi.move(
+        user.id,
+        requestToMove.id,
+        folderId,
+      );
+      setRequests((items) =>
+        items.map((item) => (item.id === moved.id ? moved : item)),
+      );
+      setRequestToMove(null);
+      toast.success("Petición movida");
+    } catch (cause) {
+      toast.error("No se pudo mover", { description: String(cause) });
+    }
   }
   const statusById = useMemo(() => {
     const map = new Map<string, "ok" | "error">();
     for (const entry of history) {
       if (!entry.requestId || map.has(entry.requestId)) continue;
-      map.set(entry.requestId, !entry.error && entry.status !== null && entry.status < 400 ? "ok" : "error");
+      map.set(
+        entry.requestId,
+        !entry.error && entry.status !== null && entry.status < 400
+          ? "ok"
+          : "error",
+      );
     }
     return map;
   }, [history]);
@@ -564,7 +699,8 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   const lastBodyByRequestId = useMemo(() => {
     const map = new Map<string, string>();
     for (const entry of history) {
-      if (entry.requestId && !map.has(entry.requestId) && entry.responseBody) map.set(entry.requestId, entry.responseBody);
+      if (entry.requestId && !map.has(entry.requestId) && entry.responseBody)
+        map.set(entry.requestId, entry.responseBody);
     }
     return map;
   }, [history]);
@@ -578,22 +714,39 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
 
   async function folderToFlow(folder: RequestFolder) {
     if (!activeWorkspace) return;
-    const ids = requests.filter((item) => item.folderId === folder.id).map((item) => item.id);
+    const ids = requests
+      .filter((item) => item.folderId === folder.id)
+      .map((item) => item.id);
     if (!ids.length) {
-      toast.warning("La carpeta está vacía", { description: "Añade peticiones para convertirla en un Flow." });
+      toast.warning("La carpeta está vacía", {
+        description: "Añade peticiones para convertirla en un Flow.",
+      });
       return;
     }
     try {
       if (!(await saveAllDirtyRequests())) return;
       const byId = new Map(requests.map((item) => [item.id, item]));
       let summary: ReturnType<typeof suggestExtractions> | null = null;
-      const flow = await createFlowFromRequests(user.id, activeWorkspace.id, folder.name, ids, (graph) => {
-        summary = suggestExtractions(graph, byId, variables.map((item) => item.key), (requestId) => lastBodyByRequestId.get(requestId));
-        return summary.graph;
-      });
+      const flow = await createFlowFromRequests(
+        user.id,
+        activeWorkspace.id,
+        folder.name,
+        ids,
+        (graph) => {
+          summary = suggestExtractions(
+            graph,
+            byId,
+            variables.map((item) => item.key),
+            (requestId) => lastBodyByRequestId.get(requestId),
+          );
+          return summary.graph;
+        },
+      );
       setIntroFlowId(flow.id);
       setMainView("flows");
-      const chained = (summary as ReturnType<typeof suggestExtractions> | null)?.added.length ?? 0;
+      const chained =
+        (summary as ReturnType<typeof suggestExtractions> | null)?.added
+          .length ?? 0;
       toast.success(`Flow creado con ${ids.length} pasos`, {
         description: chained
           ? `${chained} variable${chained > 1 ? "s" : ""} encadenada${chained > 1 ? "s" : ""} automáticamente.`
@@ -604,9 +757,35 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     }
   }
 
-  async function recordExecution(result: { method: string; resolvedUrl: string; response?: import("@/features/requests/request-client").HttpResponse; error?: string }) {
+  async function recordExecution(result: {
+    method: string;
+    resolvedUrl: string;
+    response?: import("@/features/requests/request-client").HttpResponse;
+    error?: string;
+  }) {
     if (!activeWorkspace || !activeRequest) return;
-    try { const entry = await requestHistoryApi.record({ userId: user.id, workspaceId: activeWorkspace.id, requestId: activeRequest.id, requestName: activeRequest.name, method: result.method, resolvedUrl: result.resolvedUrl, status: result.response?.status ?? null, statusText: result.response?.statusText ?? "", durationMs: result.response?.durationMs ?? null, sizeBytes: result.response?.sizeBytes ?? null, responseHeaders: JSON.stringify(result.response?.headers ?? []), responseBody: result.response?.body ?? "", error: result.error ?? null }); setHistory((items) => [entry, ...items].slice(0, 200)); } catch (cause) { toast.error("No se pudo guardar el historial", { description: String(cause) }); }
+    try {
+      const entry = await requestHistoryApi.record({
+        userId: user.id,
+        workspaceId: activeWorkspace.id,
+        requestId: activeRequest.id,
+        requestName: activeRequest.name,
+        method: result.method,
+        resolvedUrl: result.resolvedUrl,
+        status: result.response?.status ?? null,
+        statusText: result.response?.statusText ?? "",
+        durationMs: result.response?.durationMs ?? null,
+        sizeBytes: result.response?.sizeBytes ?? null,
+        responseHeaders: JSON.stringify(result.response?.headers ?? []),
+        responseBody: result.response?.body ?? "",
+        error: result.error ?? null,
+      });
+      setHistory((items) => [entry, ...items].slice(0, 200));
+    } catch (cause) {
+      toast.error("No se pudo guardar el historial", {
+        description: String(cause),
+      });
+    }
   }
 
   async function saveVariable(
@@ -650,8 +829,13 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     requests,
     onVariableSaved: mergeVariable,
   });
-  const activeAutomations = automations.items.filter((item) => item.enabled).length;
-  const automatedIds = useMemo(() => new Set(automations.items.map((item) => item.requestId)), [automations.items]);
+  const activeAutomations = automations.items.filter(
+    (item) => item.enabled,
+  ).length;
+  const automatedIds = useMemo(
+    () => new Set(automations.items.map((item) => item.requestId)),
+    [automations.items],
+  );
 
   function mergeVariable(saved: EnvironmentVariable) {
     if (saved.environmentId !== activeEnvironmentId) return;
@@ -678,18 +862,27 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     }
   }
 
-  const registerRequestSave = useCallback((requestId: string, save: () => Promise<boolean>) => {
-    requestSavers.current.set(requestId, save);
-    return () => { requestSavers.current.delete(requestId); };
-  }, []);
+  const registerRequestSave = useCallback(
+    (requestId: string, save: () => Promise<boolean>) => {
+      requestSavers.current.set(requestId, save);
+      return () => {
+        requestSavers.current.delete(requestId);
+      };
+    },
+    [],
+  );
 
-  const updateRequestDirty = useCallback((requestId: string, dirty: boolean) => {
-    setDirtyRequestIds((current) => {
-      const next = new Set(current);
-      if (dirty) next.add(requestId); else next.delete(requestId);
-      return next;
-    });
-  }, []);
+  const updateRequestDirty = useCallback(
+    (requestId: string, dirty: boolean) => {
+      setDirtyRequestIds((current) => {
+        const next = new Set(current);
+        if (dirty) next.add(requestId);
+        else next.delete(requestId);
+        return next;
+      });
+    },
+    [],
+  );
 
   async function saveOpenRequest(requestId = activeRequestId) {
     if (!requestId || !dirtyRequestIds.has(requestId)) return true;
@@ -699,7 +892,9 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   async function openRequest(request: SavedRequest) {
     setIntroFlowId(undefined);
     if (request.id !== activeRequestId && !(await saveOpenRequest())) return;
-    setOpenRequestIds((ids) => ids.includes(request.id) ? ids : [...ids, request.id]);
+    setOpenRequestIds((ids) =>
+      ids.includes(request.id) ? ids : [...ids, request.id],
+    );
     setActiveRequestId(request.id);
     setMainView("request");
   }
@@ -709,18 +904,14 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
     const index = openRequestIds.indexOf(requestId);
     const remaining = openRequestIds.filter((id) => id !== requestId);
     setOpenRequestIds(remaining);
-    if (activeRequestId === requestId) setActiveRequestId(remaining[index] ?? remaining[index - 1] ?? "");
+    if (activeRequestId === requestId)
+      setActiveRequestId(remaining[index] ?? remaining[index - 1] ?? "");
   }
 
   async function leaveRequestView(view: MainView) {
     setIntroFlowId(undefined);
     if (!(await saveAllDirtyRequests())) return;
     setMainView(view);
-  }
-
-  function openRequestEditor() {
-    setMainView("request");
-    window.setTimeout(() => document.getElementById("request-url")?.focus(), 0);
   }
 
   function changeWorkspace(workspaceId: string) {
@@ -735,6 +926,7 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   }
 
   function changeEnvironment(environmentId: string) {
+    setVariables([]);
     setActiveEnvironmentId(environmentId);
     setMainView("request");
   }
@@ -744,160 +936,284 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
       const items = await workspaceApi.list(user.id);
       setWorkspaces(items);
       changeWorkspace(result.workspaceId);
-      toast.success("Workspace disponible", { description: `${result.workspaceName} se añadió a Flux.` });
+      toast.success("Workspace disponible", {
+        description: `${result.workspaceName} se añadió a Flux.`,
+      });
     } catch (cause) {
-      toast.error("El workspace se importó, pero no se pudo abrir", { description: String(cause) });
+      toast.error("El workspace se importó, pero no se pudo abrir", {
+        description: String(cause),
+      });
     }
   }
 
   return (
-    <div className="grid h-screen min-h-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden bg-[var(--flux-bg)] text-foreground max-md:grid-cols-1">
-      <aside className="flex h-full min-h-0 flex-col m-3 mr-0 rounded-xl bg-[var(--flux-panel-2)] ring-1 ring-[var(--flux-line)] max-md:hidden">
-        <div className="flex h-11 items-center gap-2 px-3">
-          <Image src="/flux-icon.png" alt="" width={22} height={22} />
-          <p className="font-sans text-sm font-semibold text-white">Flux</p>
-          {systemVersion ? (
-            <span className="font-mono text-[9px] text-muted-foreground/60" title={`Versión ${systemVersion}`}>v{systemVersion}</span>
-          ) : null}
+    <div
+      className={`fx-workspace ${mainView === "history" || mainView === "settings" ? "fx-without-side" : ""}`}
+    >
+      <nav className="fx-rail" aria-label="Navegación principal">
+        <button
+          className="fx-brand"
+          aria-label="Flux · Peticiones"
+          onClick={() => void leaveRequestView("request")}
+        >
+          fx
+        </button>
+        {(
+          [
+            ["request", List, "Peticiones"],
+            ["history", Clock3, "Historial"],
+            ["environment", Layers, "Entornos"],
+            ["flows", Workflow, "Flow"],
+          ] as const
+        ).map(([view, Icon, label]) => (
+          <button
+            key={view}
+            type="button"
+            title={label}
+            aria-label={label}
+            aria-current={mainView === view ? "page" : undefined}
+            className={`fx-rail-button ${mainView === view ? "is-on" : ""}`}
+            onClick={() => void leaveRequestView(view)}
+          >
+            <Icon size={17} />
+          </button>
+        ))}
+        <button
+          className="fx-rail-button"
+          title="Buscar ⌘K"
+          aria-label="Buscar"
+          onClick={() => setPaletteOpen(true)}
+        >
+          <Search size={17} />
+        </button>
+        {automations.items.length > 0 && (
+          <button
+            className={`fx-rail-button ${mainView === "automations" ? "is-on" : ""}`}
+            title="Automatizaciones"
+            aria-label="Automatizaciones"
+            onClick={() => void leaveRequestView("automations")}
+          >
+            <Clock size={17} />
+            {activeAutomations > 0 && <span className="fx-live-dot" />}
+          </button>
+        )}
+        <div className="fx-rail-bottom">
+          <ThemePicker />
+          <button
+            className={`fx-rail-button ${mainView === "settings" ? "is-on" : ""}`}
+            title="Ajustes"
+            aria-label="Ajustes"
+            onClick={() => void leaveRequestView("settings")}
+          >
+            <Settings size={17} />
+          </button>
+          <button
+            className="fx-rail-button"
+            title="Cerrar sesión"
+            aria-label="Cerrar sesión"
+            onClick={onLogout}
+          >
+            <LogOut size={16} />
+          </button>
         </div>
-
-        <div className="flex flex-1 flex-col overflow-y-auto p-2">
-          <SectionTitle
-            label="Peticiones"
-            onAdd={() => { setRequestFolderId(null); setRequestForm(true); }}
-            onAddFolder={() => setFolderForm(null)}
+      </nav>
+      <aside className="fx-sidebar">
+        <div className="fx-sidebar-heading">
+          <WorkspaceSelect
+            value={activeWorkspaceId}
+            onChange={changeWorkspace}
+            items={workspaces}
           />
-          {activeWorkspace ? (
-            <div ref={requestListRef} className="flex min-h-0 flex-1 flex-col">
-              <RequestTree statusById={statusById} onFolderToFlow={(folder) => void folderToFlow(folder)} folders={folders} requests={requests} activeRequestId={mainView === "request" ? activeRequestId : ""}
-                onSelect={(request) => void openRequest(request)}
-                onNewRequest={(folderId) => { setRequestFolderId(folderId); setRequestForm(true); }}
-                onNewFolder={(parentId) => setFolderForm(parentId)} onRenameFolder={setFolderToRename} onDeleteFolder={setFolderToDelete}
-                onRequestMenu={(request, action) => { if (action === "rename") setRequestToRename(request); else if (action === "duplicate") void duplicateRequest(request); else if (action === "move") setRequestToMove(request); else setPendingRequestDelete(request); }} />
-              {/*{false && requests.map((request) => (*/}
-              {/*  <div*/}
-              {/*    key={request.id}*/}
-              {/*    className={`group flex h-9 w-full items-center rounded-lg border pr-1 ${mainView === "request" && activeRequestId === request.id ? "border-violet-400/15 bg-violet-500/10 text-violet-100" : "border-transparent text-muted-foreground hover:bg-white/[0.035] hover:text-white"}`}*/}
-              {/*  >*/}
-              {/*    <button*/}
-              {/*      type="button"*/}
-              {/*      onClick={() => {*/}
-              {/*        setActiveRequestId(request.id);*/}
-              {/*        setMainView("request");*/}
-              {/*      }}*/}
-              {/*      className="flex min-w-0 flex-1 items-center gap-2 px-2.5 text-left text-xs"*/}
-              {/*    >*/}
-              {/*      <span*/}
-              {/*        className={`w-10 shrink-0 font-mono text-[9px] font-bold ${methodColor(request.method)}`}*/}
-              {/*      >*/}
-              {/*        {request.method}*/}
-              {/*      </span>*/}
-              {/*      <span className="truncate">{request.name}</span>*/}
-              {/*    </button>*/}
-              {/*    <details className="relative shrink-0">*/}
-              {/*      <summary*/}
-              {/*        aria-label={`Acciones de ${request.name}`}*/}
-              {/*        title="Más acciones"*/}
-              {/*        className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-muted-foreground/55 opacity-0 transition hover:bg-white/5 hover:text-white focus:opacity-100 group-hover:opacity-100 [&::-webkit-details-marker]:hidden"*/}
-              {/*      >*/}
-              {/*        <MoreVertical size={14} />*/}
-              {/*      </summary>*/}
-              {/*      <div className="absolute top-8 right-0 z-50 w-40 overflow-hidden rounded-xl border border-white/10 bg-[#181022] p-1.5 shadow-2xl shadow-black/50">*/}
-              {/*        <button*/}
-              {/*          type="button"*/}
-              {/*          onClick={(event) => {*/}
-              {/*            event.currentTarget*/}
-              {/*              .closest("details")*/}
-              {/*              ?.removeAttribute("open");*/}
-              {/*            setRequestToRename(request);*/}
-              {/*          }}*/}
-              {/*          className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-muted-foreground hover:bg-violet-400/10 hover:text-violet-200"*/}
-              {/*        >*/}
-              {/*          <Pencil size={13} /> Editar nombre*/}
-              {/*        </button>*/}
-              {/*        <button*/}
-              {/*          type="button"*/}
-              {/*          onClick={(event) => {*/}
-              {/*            event.currentTarget*/}
-              {/*              .closest("details")*/}
-              {/*              ?.removeAttribute("open");*/}
-              {/*            void duplicateRequest(request);*/}
-              {/*          }}*/}
-              {/*          className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-muted-foreground hover:bg-violet-400/10 hover:text-violet-200"*/}
-              {/*        >*/}
-              {/*          <Copy size={13} /> Duplicar*/}
-              {/*        </button>*/}
-              {/*        <div className="my-1 h-px bg-white/[0.06]" />*/}
-              {/*        <button*/}
-              {/*          type="button"*/}
-              {/*          onClick={(event) => {*/}
-              {/*            event.currentTarget*/}
-              {/*              .closest("details")*/}
-              {/*              ?.removeAttribute("open");*/}
-              {/*            setPendingRequestDelete(request);*/}
-              {/*          }}*/}
-              {/*          className="flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs text-rose-300/80 hover:bg-rose-400/10 hover:text-rose-200"*/}
-              {/*        >*/}
-              {/*          <Trash2 size={13} /> Eliminar*/}
-              {/*        </button>*/}
-              {/*      </div>*/}
-              {/*    </details>*/}
-              {/*  </div>*/}
-              {/*))}*/}
-              {/*{false && !requests.length ? (*/}
-              {/*  <div className="my-auto px-5 py-10 text-center">*/}
-              {/*    <FileJson2*/}
-              {/*      size={22}*/}
-              {/*      className="mx-auto text-muted-foreground/45"*/}
-              {/*    />*/}
-              {/*    <p className="mt-3 text-xs leading-5 text-muted-foreground">*/}
-              {/*      No hay peticiones guardadas en {activeWorkspace?.name}.*/}
-              {/*    </p>*/}
-              {/*    <button*/}
-              {/*      type="button"*/}
-              {/*      onClick={() => setRequestForm(true)}*/}
-              {/*      className="mt-4 text-xs font-medium text-violet-300 hover:text-violet-200"*/}
-              {/*    >*/}
-              {/*      Crear primera petición*/}
-              {/*    </button>*/}
-              {/*  </div>*/}
-              {/*) : null}*/}
+          <details className="relative">
+            <summary
+              className="fx-icon-button"
+              aria-label="Acciones del workspace"
+            >
+              <MoreHorizontal size={16} />
+            </summary>
+            <div
+              className="fx-popover"
+              onClick={(event) =>
+                event.currentTarget.closest("details")?.removeAttribute("open")
+              }
+            >
+              <button onClick={() => setWorkspaceForm(true)}>
+                Crear workspace
+              </button>
+              {activeWorkspace && (
+                <>
+                  <button onClick={() => setWorkspaceToRename(activeWorkspace)}>
+                    Renombrar workspace
+                  </button>
+                  <button
+                    onClick={() => setPendingWorkspaceDelete(activeWorkspace)}
+                  >
+                    Eliminar workspace
+                  </button>
+                </>
+              )}
             </div>
-          ) : (
-            <p className="mt-5 px-3 text-xs leading-5 text-muted-foreground">
-              Selecciona o crea un workspace para ver sus peticiones.
-            </p>
-          )}
+          </details>
         </div>
-
-        <div className="flex items-center gap-0.5 p-2">
-          <button onClick={() => setHistoryOpen((value) => !value)} className="flex h-7 flex-1 items-center gap-2 rounded-md px-2 text-xs text-muted-foreground hover:bg-white/[0.05] hover:text-white">
-            <Clock3 size={13} /> Historial <span className="ml-auto text-[9px] opacity-60">{history.length}</span>
-          </button>
-          <button onClick={onLogout} title="Cerrar sesión" aria-label="Cerrar sesión" className="grid size-7 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.05] hover:text-white">
-            <LogOut size={13} />
-          </button>
-        </div>
-      </aside>
-
-      <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-        <header className="mx-3 mt-3 flex h-11 min-w-0 shrink-0 items-center justify-between gap-2 rounded-xl bg-[var(--flux-panel-2)] px-3 ring-1 ring-[var(--flux-line)]">
-          <div className="flex min-w-0 flex-1 items-center gap-1.5">
-            <WorkspaceSelect
-              value={activeWorkspaceId}
-              onChange={changeWorkspace}
-              items={workspaces}
+        {mainView === "environment" ? (
+          <>
+            <div className="fx-sidebar-heading">
+              <span>Entornos</span>
+              <button
+                className="fx-icon-button"
+                aria-label="Crear entorno"
+                onClick={() => setEnvironmentForm(true)}
+              >
+                <Plus size={16} />
+              </button>
+            </div>
+            {environments.map((env) => (
+              <button
+                key={env.id}
+                className={`fx-side-item ${activeEnvironmentId === env.id ? "is-on" : ""}`}
+                onClick={() => {
+                  if (activeEnvironmentId !== env.id) {
+                    setVariables([]);
+                    setActiveEnvironmentId(env.id);
+                  }
+                }}
+              >
+                <span
+                  className="fx-live-dot"
+                  style={{ background: env.color }}
+                />
+                {env.name}
+                {activeEnvironmentId === env.id && (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    Activo
+                  </span>
+                )}
+              </button>
+            ))}
+            {!environments.length && (
+              <p className="p-4 text-xs text-muted-foreground">
+                Crea un entorno para guardar tus variables.
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="fx-sidebar-search">
+              <Search size={14} />
+              <input
+                aria-label="Buscar peticiones"
+                placeholder="Buscar"
+                value={requestSearch}
+                onChange={(event) => setRequestSearch(event.target.value)}
+              />
+              <button
+                onClick={() => setPaletteOpen(true)}
+                aria-label="Búsqueda global"
+              >
+                <kbd>⌘K</kbd>
+              </button>
+            </div>
+            <SectionTitle
+              label="Peticiones"
+              onAdd={() => {
+                setRequestFolderId(null);
+                setRequestForm(true);
+              }}
+              onAddFolder={() => setFolderForm(null)}
             />
-            <IconButton label="Crear workspace" onClick={() => setWorkspaceForm(true)}><Plus size={14} /></IconButton>
-            {activeWorkspace ? (
-              <details className="relative">
-                <summary aria-label="Más acciones del workspace" title="Más acciones" className="grid size-7 cursor-pointer list-none place-items-center rounded-md text-zinc-300 transition bg-white/[0.05] ring-1 ring-white/[0.08] hover:bg-white/[0.1] hover:ring-white/[0.16] active:scale-95 [&::-webkit-details-marker]:hidden"><MoreHorizontal size={14} /></summary>
-                <div className="absolute top-8 left-0 z-50 flex w-40 flex-col gap-0.5 rounded-lg border border-white/10 bg-[#181022] p-1 shadow-2xl" onClick={(event) => event.currentTarget.closest("details")?.removeAttribute("open")}>
-                  <button onClick={() => setWorkspaceToRename(activeWorkspace)} className="menu-item"><Pencil size={13} /> Renombrar</button>
-                  <button onClick={() => setPendingWorkspaceDelete(activeWorkspace)} className="menu-item text-rose-300"><Trash2 size={13} /> Eliminar</button>
-                </div>
-              </details>
-            ) : null}
+            <div ref={requestListRef} className="min-h-0 flex-1 overflow-auto">
+              <RequestTree
+                statusById={statusById}
+                onFolderToFlow={(folder) => void folderToFlow(folder)}
+                folders={folders}
+                requests={requests.filter((request) =>
+                  request.name
+                    .toLowerCase()
+                    .includes(requestSearch.toLowerCase()),
+                )}
+                activeRequestId={mainView === "request" ? activeRequestId : ""}
+                onSelect={(request) => void openRequest(request)}
+                onNewRequest={(folderId) => {
+                  setRequestFolderId(folderId);
+                  setRequestForm(true);
+                }}
+                onNewFolder={(parentId) => setFolderForm(parentId)}
+                onRenameFolder={setFolderToRename}
+                onDeleteFolder={setFolderToDelete}
+                onRequestMenu={(request, action) => {
+                  if (action === "rename") setRequestToRename(request);
+                  else if (action === "duplicate")
+                    void duplicateRequest(request);
+                  else if (action === "move") setRequestToMove(request);
+                  else setPendingRequestDelete(request);
+                }}
+              />
+            </div>
+          </>
+        )}
+      </aside>
+      <div className="fx-main">
+        <header className="fx-topbar">
+          <div className="min-w-0">
+            <p className="fx-breadcrumb">
+              {mainView === "request"
+                ? (folders.find(
+                    (folder) => folder.id === activeRequest?.folderId,
+                  )?.name ??
+                  activeWorkspace?.name ??
+                  "Flux")
+                : (activeWorkspace?.name ?? "Flux")}{" "}
+              /
+            </p>
+            <h1 className="fx-page-title">
+              {mainView === "request"
+                ? (activeRequest?.name ?? "Peticiones")
+                : (
+                    {
+                      environment: "Entornos",
+                      history: "Historial",
+                      settings: "Ajustes",
+                      flows: "Flow",
+                      automations: "Automatizaciones",
+                    } as const
+                  )[mainView]}
+              {activeRequest &&
+                mainView === "request" &&
+                dirtyRequestIds.has(activeRequest.id) && (
+                  <span className="fx-dirty-dot" />
+                )}
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            {activeWorkspace && (
+              <SelectControl
+                value={activeEnvironmentId}
+                onChange={changeEnvironment}
+                placeholder="Sin entorno"
+                items={environments}
+              />
+            )}
+            {mainView === "environment" && (
+              <button
+                className="fx-icon-button"
+                aria-label="Crear entorno"
+                onClick={() => setEnvironmentForm(true)}
+              >
+                <Plus size={16} />
+              </button>
+            )}
+            {mainView === "request" && activeRequest && (
+              <button
+                className="fx-icon-button"
+                title="Guardar ⌘S"
+                aria-label="Guardar petición activa"
+                onClick={() =>
+                  void requestSavers.current.get(activeRequest.id)?.()
+                }
+              >
+                <FileJson2 size={16} />
+              </button>
+            )}
             <WorkspaceTransfer
               variant="toolbar"
               userId={user.id}
@@ -905,45 +1221,10 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               onImported={(result) => void workspaceImported(result)}
             />
           </div>
-          <div className="flex min-w-0 shrink-0 items-center gap-1.5">
-            {activeWorkspace ? (
-              <>
-                <SelectControl
-                  value={activeEnvironmentId}
-                  onChange={changeEnvironment}
-                  placeholder="Sin environment"
-                  items={environments}
-                />
-                <IconButton label="Crear environment" onClick={() => setEnvironmentForm(true)}><Plus size={14} /></IconButton>
-                {activeEnvironment ? (
-                  <IconButton label="Editar environment" active={mainView === "environment"} onClick={() => void leaveRequestView("environment")}><Pencil size={13} /></IconButton>
-                ) : null}
-                <button type="button" onClick={() => void leaveRequestView("flows")} title="Abrir Flow" aria-label="Abrir Flow" className={`mx-1 inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition ${mainView === "flows" ? "bg-[var(--flux-primary-soft)] text-white ring-1 ring-[var(--flux-primary-border)]" : "text-zinc-200 bg-white/[0.05] ring-1 ring-white/[0.08] hover:bg-white/[0.1] hover:ring-white/[0.16] active:scale-95"}`}><Workflow size={14} /><span className="hidden sm:inline">Flow</span></button>
-              </>
-            ) : null}
-            {automations.items.length ? (
-              <button
-                type="button"
-                onClick={() => void leaveRequestView("automations")}
-                title="Automatizaciones"
-                aria-label="Abrir automatizaciones"
-                className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition ${mainView === "automations" ? "bg-[var(--flux-primary-soft)] text-white ring-1 ring-[var(--flux-primary-border)]" : "bg-white/[0.05] text-zinc-200 ring-1 ring-white/[0.08] hover:bg-white/[0.1]"}`}
-              >
-                <Clock size={13} />
-                {activeAutomations ? <span className="size-1.5 rounded-full bg-emerald-400" /> : null}
-                <span className="hidden sm:inline">{activeAutomations}</span>
-              </button>
-            ) : null}
-            <ThemePicker />
-            <IconButton label="Abrir settings" active={mainView === "settings"} onClick={() => void leaveRequestView("settings")}><Settings size={14} /></IconButton>
-            <div className="ml-1 grid size-6 shrink-0 place-items-center rounded-full bg-white/[0.08] text-[10px] font-semibold text-white">
-              {user.name.slice(0, 1).toUpperCase()}
-            </div>
-          </div>
         </header>
 
         <main
-          className={`relative flex min-h-0 flex-1 items-center justify-center p-3 ${mainView === "request" ? "overflow-hidden" : "overflow-y-auto"}`}
+          className={`fx-content relative flex min-h-0 flex-1 ${mainView === "request" ? "overflow-hidden" : "overflow-y-auto"}`}
         >
           {loading ? (
             <p className="text-sm text-muted-foreground">
@@ -955,57 +1236,90 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
           ) : null}
           {activeWorkspace && activeRequest && mainView === "request" ? (
             <div className="flex h-full min-h-0 w-full flex-col">
-              <RequestTabs
-                tabs={openRequestIds.map((id) => requests.find((item) => item.id === id)).filter((item): item is SavedRequest => Boolean(item))}
-                activeId={activeRequestId}
-                dirtyIds={dirtyRequestIds}
-                statusById={statusById}
-                automatedIds={automatedIds}
-                onSelect={(id) => { const request = requests.find((item) => item.id === id); if (request) void openRequest(request); }}
-                onClose={(id) => void closeRequestTab(id)}
-                onNew={() => setRequestForm(true)}
-              />
+              {openRequestIds.length > 1 && (
+                <RequestTabs
+                  tabs={openRequestIds
+                    .map((id) => requests.find((item) => item.id === id))
+                    .filter((item): item is SavedRequest => Boolean(item))}
+                  activeId={activeRequestId}
+                  dirtyIds={dirtyRequestIds}
+                  statusById={statusById}
+                  automatedIds={automatedIds}
+                  onSelect={(id) => {
+                    const request = requests.find((item) => item.id === id);
+                    if (request) void openRequest(request);
+                  }}
+                  onClose={(id) => void closeRequestTab(id)}
+                  onNew={() => setRequestForm(true)}
+                />
+              )}
               <div className="relative min-h-0 flex-1">
                 {openRequestIds.map((id) => {
                   const request = requests.find((item) => item.id === id);
                   if (!request) return null;
-                  return <div key={id} className={id === activeRequestId ? "h-full" : "hidden"}>
-                    <RequestBuilder
-                      userId={user.id}
-                      workspace={activeWorkspace}
-                      variables={activeEnvironment ? variables : []}
-                      flowVariables={flowVariables}
-                      automations={automations}
-                      environments={environments}
-                      activeEnvironmentId={activeEnvironmentId}
-                      onVariableSaved={mergeVariable}
-                      onEnvironmentCreated={(created) => { setEnvironments((items) => [...items, created]); if (!activeEnvironmentId) setActiveEnvironmentId(created.id); }}
-                      request={request}
-                      onSaved={(saved) => setRequests((items) => items.map((item) => item.id === saved.id ? saved : item))}
-                      onDirtyChange={updateRequestDirty}
-                      registerSave={registerRequestSave}
-                      onExecuted={(result) => void recordExecution(result)}
-                    />
-                  </div>;
+                  return (
+                    <div
+                      key={id}
+                      className={id === activeRequestId ? "h-full" : "hidden"}
+                    >
+                      <RequestBuilder
+                        userId={user.id}
+                        workspace={activeWorkspace}
+                        variables={activeEnvironment ? variables : []}
+                        flowVariables={flowVariables}
+                        automations={automations}
+                        environments={environments}
+                        activeEnvironmentId={activeEnvironmentId}
+                        onVariableSaved={mergeVariable}
+                        onEnvironmentCreated={(created) => {
+                          setEnvironments((items) => [...items, created]);
+                          if (!activeEnvironmentId)
+                            setActiveEnvironmentId(created.id);
+                        }}
+                        request={request}
+                        onSaved={(saved) =>
+                          setRequests((items) =>
+                            items.map((item) =>
+                              item.id === saved.id ? saved : item,
+                            ),
+                          )
+                        }
+                        onDirtyChange={updateRequestDirty}
+                        registerSave={registerRequestSave}
+                        onExecuted={(result) => void recordExecution(result)}
+                      />
+                    </div>
+                  );
                 })}
               </div>
             </div>
           ) : null}
-          {activeWorkspace &&
-          !activeRequest &&
-          mainView === "request" ? (
+          {activeWorkspace && !activeRequest && mainView === "request" ? (
             <EmptyRequest
               workspace={activeWorkspace}
               onCreate={() => setRequestForm(true)}
             />
           ) : null}
           {activeWorkspace &&
+            !activeEnvironment &&
+            mainView === "environment" && (
+              <div className="fx-empty">
+                <Layers size={24} />
+                <h2>Crea tu primer entorno</h2>
+                <button
+                  className="fx-quiet-button"
+                  onClick={() => setEnvironmentForm(true)}
+                >
+                  Crear entorno
+                </button>
+              </div>
+            )}
+          {activeWorkspace &&
           activeEnvironment &&
           mainView === "environment" ? (
             <EnvironmentView
               environment={activeEnvironment}
               variables={variables}
-              onBack={openRequestEditor}
               onRename={() => setEnvironmentToRename(activeEnvironment)}
               onDelete={() => setPendingEnvironmentDelete(activeEnvironment)}
               onSaveVariable={saveVariable}
@@ -1020,7 +1334,11 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               variables={activeEnvironment ? variables : []}
               initialFlowId={introFlowId}
               lastBodyByRequestId={lastBodyByRequestId}
-              onRequestUpdated={(saved) => setRequests((items) => items.map((item) => (item.id === saved.id ? saved : item)))}
+              onRequestUpdated={(saved) =>
+                setRequests((items) =>
+                  items.map((item) => (item.id === saved.id ? saved : item)),
+                )
+              }
               onFlowsChange={handleFlowsChange}
             />
           ) : null}
@@ -1032,13 +1350,41 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
               onOpenRequest={(request) => void openRequest(request)}
             />
           ) : null}
-          {mainView === "settings" ? <SettingsView currentVersion={systemVersion} userId={user.id} workspace={activeWorkspace} onWorkspaceImported={(result) => void workspaceImported(result)} /> : null}
+          {mainView === "settings" ? (
+            <SettingsView
+              currentVersion={systemVersion}
+              userId={user.id}
+              workspace={activeWorkspace}
+              onWorkspaceImported={(result) => void workspaceImported(result)}
+            />
+          ) : null}
           {error ? (
             <p className="absolute bottom-5 rounded-lg border border-red-400/15 bg-red-400/10 px-3 py-2 text-xs text-red-200">
               {error}
             </p>
           ) : null}
-          {historyOpen && activeWorkspace ? <HistoryDrawer history={history} activeRequest={activeRequest} onClose={() => setHistoryOpen(false)} onClear={async () => { await requestHistoryApi.clear(user.id, activeWorkspace.id); setHistory([]); }} /> : null}
+          {mainView === "history" && activeWorkspace ? (
+            <HistoryView
+              history={history}
+              onRepeat={(entry) => {
+                const request = requests.find(
+                  (item) => item.id === entry.requestId,
+                );
+                if (request) void openRequest(request);
+                else toast.info("La petición original ya no existe");
+              }}
+              onClear={async () => {
+                try {
+                  await requestHistoryApi.clear(user.id, activeWorkspace.id);
+                  setHistory([]);
+                } catch (cause) {
+                  toast.error("No se pudo limpiar el historial", {
+                    description: String(cause),
+                  });
+                }
+              }}
+            />
+          ) : null}
         </main>
       </div>
 
@@ -1104,10 +1450,13 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
         environments={environments}
         activeEnvironmentId={activeEnvironmentId}
         onOpenRequest={(request) => void openRequest(request)}
-        onNewRequest={() => { setRequestFolderId(null); setRequestForm(true); }}
+        onNewRequest={() => {
+          setRequestFolderId(null);
+          setRequestForm(true);
+        }}
         onNewFolder={() => setFolderForm(null)}
         onOpenView={(view) => void leaveRequestView(view)}
-        onOpenHistory={() => setHistoryOpen(true)}
+        onOpenHistory={() => void leaveRequestView("history")}
         onChangeWorkspace={changeWorkspace}
         onChangeEnvironment={changeEnvironment}
       />
@@ -1138,10 +1487,40 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
           onSubmit={renameRequest}
         />
       ) : null}
-      {folderForm !== undefined ? <NameDialog title={folderForm ? "Nueva subcarpeta" : "Nueva carpeta"} label="Nombre de la carpeta" onClose={() => setFolderForm(undefined)} onSubmit={createFolder} /> : null}
-      {folderToRename ? <NameDialog title="Renombrar carpeta" label="Nuevo nombre" defaultValue={folderToRename.name} submitLabel="Guardar cambios" onClose={() => setFolderToRename(null)} onSubmit={renameFolder} /> : null}
-      {folderToDelete ? <SimpleConfirm title="Eliminar carpeta" description={`Se eliminará ${folderToDelete.name} y sus subcarpetas. Las peticiones no se borrarán.`} onCancel={() => setFolderToDelete(null)} onConfirm={deleteFolder} /> : null}
-      {requestToMove ? <MoveRequestDialog request={requestToMove} folders={folders} onClose={() => setRequestToMove(null)} onSubmit={moveRequest} /> : null}
+      {folderForm !== undefined ? (
+        <NameDialog
+          title={folderForm ? "Nueva subcarpeta" : "Nueva carpeta"}
+          label="Nombre de la carpeta"
+          onClose={() => setFolderForm(undefined)}
+          onSubmit={createFolder}
+        />
+      ) : null}
+      {folderToRename ? (
+        <NameDialog
+          title="Renombrar carpeta"
+          label="Nuevo nombre"
+          defaultValue={folderToRename.name}
+          submitLabel="Guardar cambios"
+          onClose={() => setFolderToRename(null)}
+          onSubmit={renameFolder}
+        />
+      ) : null}
+      {folderToDelete ? (
+        <SimpleConfirm
+          title="Eliminar carpeta"
+          description={`Se eliminará ${folderToDelete.name} y sus subcarpetas. Las peticiones no se borrarán.`}
+          onCancel={() => setFolderToDelete(null)}
+          onConfirm={deleteFolder}
+        />
+      ) : null}
+      {requestToMove ? (
+        <MoveRequestDialog
+          request={requestToMove}
+          folders={folders}
+          onClose={() => setRequestToMove(null)}
+          onSubmit={moveRequest}
+        />
+      ) : null}
       <WhatsNewModal currentVersion={systemVersion} />
       <UpdateControl currentVersion={systemVersion} variant="headless" />
       <ThemeRuntime />
@@ -1149,42 +1528,121 @@ export function AuthenticatedShell({ user, onLogout }: Props) {
   );
 }
 
-function SimpleConfirm({ title, description, onCancel, onConfirm }: { title: string; description: string; onCancel: () => void; onConfirm: () => void }) {
-  return <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-4"><div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#151021] p-5"><h2 className="font-semibold text-white">{title}</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p><div className="mt-5 flex justify-end gap-2"><button onClick={onCancel} className="rounded-lg px-4 py-2 text-xs text-muted-foreground">Cancelar</button><button onClick={onConfirm} className="rounded-lg bg-rose-500/15 px-4 py-2 text-xs text-rose-200">Eliminar</button></div></div></div>;
-}
-
-function HistoryDrawer({ history: allHistory, activeRequest, onClose, onClear }: { history: RequestHistoryEntry[]; activeRequest: SavedRequest | null; onClose: () => void; onClear: () => Promise<void> }) {
-  const [onlyActive, setOnlyActive] = useState(Boolean(activeRequest));
-  const history = onlyActive && activeRequest ? allHistory.filter((entry) => entry.requestId === activeRequest.id) : allHistory;
-  const [selected, setSelected] = useState<RequestHistoryEntry | null>(history[0] ?? null);
-  return <section className="absolute inset-x-0 bottom-0 z-40 flex h-[48%] min-h-72 flex-col border-t border-violet-400/20 bg-[#0d0818]/[0.98] shadow-[0_-24px_70px_rgba(0,0,0,.45)] backdrop-blur-xl">
-    <header className="flex h-11 shrink-0 items-center border-b border-white/[0.07] px-4"><Clock3 size={14} className="text-violet-300"/><h2 className="ml-2 text-xs font-semibold text-white">Historial de ejecuciones</h2><span className="ml-2 text-[9px] text-muted-foreground">últimas 200</span>{activeRequest ? <button onClick={() => { setOnlyActive((value) => !value); setSelected(null); }} className={`ml-3 h-6 rounded-md px-2 text-[10px] ring-1 ${onlyActive ? "bg-white/[0.1] text-white ring-white/20" : "text-muted-foreground ring-white/10 hover:text-white"}`}>Solo {activeRequest.name}</button> : null}<button onClick={() => void onClear()} className="ml-auto text-[10px] text-rose-300/70 hover:text-rose-200">Limpiar</button><button onClick={onClose} className="ml-4 text-xs text-muted-foreground">Cerrar</button></header>
-    <div className="grid min-h-0 flex-1 grid-cols-[300px_minmax(0,1fr)]"><div className="overflow-y-auto border-r border-white/[0.07] p-2">{history.map((entry) => <button key={entry.id} onClick={() => setSelected(entry)} className={`mb-1 flex w-full items-start gap-2 rounded-lg p-2 text-left ${selected?.id === entry.id ? "bg-violet-500/12" : "hover:bg-white/[0.035]"}`}><span className="w-12 font-mono text-[9px] font-bold text-violet-300">{entry.method}</span><span className="min-w-0 flex-1"><span className="block truncate text-xs text-white/85">{entry.requestName}</span><span className="block truncate text-[9px] text-muted-foreground">{entry.status ?? "ERR"} · {entry.durationMs ?? "—"} ms · {entry.createdAt}</span></span></button>)}{!history.length ? <p className="p-6 text-center text-xs text-muted-foreground">Envía una petición y aparecerá aquí.</p> : null}</div>
-      <div className="min-w-0 overflow-auto p-4">{selected ? <><div className="flex flex-wrap items-center gap-3"><span className={selected.error ? "text-rose-300" : "text-emerald-300"}>{selected.status ?? "Error"}</span><span className="font-mono text-[10px] text-muted-foreground">{selected.durationMs ?? "—"} ms · {selected.sizeBytes ?? 0} B</span></div><p className="mt-2 break-all font-mono text-[10px] text-violet-200/75">{selected.resolvedUrl}</p><pre className="mt-4 min-h-32 whitespace-pre-wrap break-words rounded-xl border border-white/[0.06] bg-black/20 p-4 font-mono text-[11px] leading-5 text-slate-300">{selected.error ?? (selected.responseBody || "Respuesta vacía")}</pre></> : null}</div></div>
-  </section>;
-}
-
-function MoveRequestDialog({ request, folders, onClose, onSubmit }: { request: SavedRequest; folders: RequestFolder[]; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-4"><form onSubmit={onSubmit} className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#151021] p-5"><h2 className="font-semibold text-white">Mover {request.name}</h2><select name="folderId" defaultValue={request.folderId ?? ""} className="mt-4 h-10 w-full rounded-lg border border-white/10 bg-[#0d0818] px-3 text-sm"><option value="">Sin carpeta</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-xs text-muted-foreground">Cancelar</button><button className="rounded-lg bg-violet-600 px-4 py-2 text-xs text-white">Mover</button></div></form></div>;
-}
-
-function SectionTitle({ label, onAdd, onAddFolder }: { label: string; onAdd: () => void; onAddFolder: () => void }) {
+function SimpleConfirm({
+  title,
+  description,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  description: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
   return (
-    <div className="flex items-center justify-between pr-0.5 pl-2 text-[10px] font-medium tracking-[0.12em] text-muted-foreground/70 uppercase">
-      <span>{label}</span>
-      <div className="flex items-center">
-        <button onClick={onAddFolder} title="Nueva carpeta" className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white" aria-label="Crear carpeta"><FolderPlus size={13} strokeWidth={1.8} /></button>
-        <button onClick={onAdd} title="Nueva petición" className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white" aria-label={`Crear ${label}`}><Plus size={13} /></button>
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#151021] p-5">
+        <h2 className="font-semibold text-white">{title}</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {description}
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="rounded-lg px-4 py-2 text-xs text-muted-foreground"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            className="rounded-lg bg-rose-500/15 px-4 py-2 text-xs text-rose-200"
+          >
+            Eliminar
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function IconButton({ label, onClick, active, children }: { label: string; onClick: () => void; active?: boolean; children: React.ReactNode }) {
+function MoveRequestDialog({
+  request,
+  folders,
+  onClose,
+  onSubmit,
+}: {
+  request: SavedRequest;
+  folders: RequestFolder[];
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
   return (
-    <button type="button" onClick={onClick} title={label} aria-label={label} className={`grid size-7 shrink-0 place-items-center rounded-md transition ${active ? "bg-[var(--flux-primary-soft)] text-white ring-1 ring-[var(--flux-primary-border)]" : "text-zinc-300 bg-white/[0.05] ring-1 ring-white/[0.08] hover:bg-white/[0.1] hover:ring-white/[0.16] active:scale-95"}`}>
-      {children}
-    </button>
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-4">
+      <form
+        onSubmit={onSubmit}
+        className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#151021] p-5"
+      >
+        <h2 className="font-semibold text-white">Mover {request.name}</h2>
+        <AppSelect
+          name="folderId"
+          defaultValue={request.folderId ?? ""}
+          className="mt-4 h-10 w-full rounded-lg border border-white/10 bg-[#0d0818] px-3 text-sm"
+        >
+          <option value="">Sin carpeta</option>
+          {folders.map((folder) => (
+            <option key={folder.id} value={folder.id}>
+              {folder.name}
+            </option>
+          ))}
+        </AppSelect>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-xs text-muted-foreground"
+          >
+            Cancelar
+          </button>
+          <button className="rounded-lg bg-violet-600 px-4 py-2 text-xs text-white">
+            Mover
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function SectionTitle({
+  label,
+  onAdd,
+  onAddFolder,
+}: {
+  label: string;
+  onAdd: () => void;
+  onAddFolder: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between pr-0.5 pl-2 text-[10px] font-medium tracking-[0.12em] text-muted-foreground/70 uppercase">
+      <span>{label}</span>
+      <div className="flex items-center">
+        <button
+          onClick={onAddFolder}
+          title="Nueva carpeta"
+          className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white"
+          aria-label="Crear carpeta"
+        >
+          <FolderPlus size={13} strokeWidth={1.8} />
+        </button>
+        <button
+          onClick={onAdd}
+          title="Nueva petición"
+          className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white"
+          aria-label={`Crear ${label}`}
+        >
+          <Plus size={13} />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1200,14 +1658,15 @@ function SelectControl({
   items: Environment[];
 }) {
   return (
-    <label className="relative hidden min-w-0 shrink sm:block">
+    <label className="relative block min-w-0 shrink">
       <Layers
         size={13}
         className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[var(--flux-primary-text)]"
       />
-      <select
+      <AppSelect
+        aria-label="Entorno activo"
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onValueChange={(value) => onChange(value)}
         className="h-7 w-[clamp(96px,14vw,170px)] cursor-pointer appearance-none truncate rounded-md bg-white/[0.05] pr-6 pl-7 text-xs text-zinc-200 ring-1 ring-white/[0.08] outline-none transition hover:bg-white/[0.1] hover:ring-white/[0.16] focus:ring-[var(--flux-primary-border)]"
       >
         <option value="">{placeholder}</option>
@@ -1216,11 +1675,7 @@ function SelectControl({
             {item.name}
           </option>
         ))}
-      </select>
-      <ChevronDown
-        size={12}
-        className="pointer-events-none absolute top-2 right-2 text-zinc-400"
-      />
+      </AppSelect>
     </label>
   );
 }
@@ -1241,9 +1696,10 @@ function WorkspaceSelect({
         size={13}
         className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-[var(--flux-primary-text)]"
       />
-      <select
+      <AppSelect
+        aria-label="Workspace activo"
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onValueChange={(value) => onChange(value)}
         className="h-7 w-[clamp(96px,14vw,170px)] cursor-pointer appearance-none truncate rounded-md bg-white/[0.05] pr-6 pl-7 text-xs font-medium text-white ring-1 ring-white/[0.08] outline-none transition hover:bg-white/[0.1] hover:ring-white/[0.16] focus:ring-[var(--flux-primary-border)]"
       >
         <option value="">Sin workspace</option>
@@ -1252,11 +1708,7 @@ function WorkspaceSelect({
             {item.name}
           </option>
         ))}
-      </select>
-      <ChevronDown
-        size={12}
-        className="pointer-events-none absolute top-2 right-2 text-zinc-400"
-      />
+      </AppSelect>
     </label>
   );
 }
@@ -1312,21 +1764,9 @@ function EmptyRequest({
   );
 }
 
-function methodColor(method: string) {
-  if (method === "GET") return "text-emerald-300";
-  if (method === "POST") return "text-amber-300";
-  if (method === "DELETE") return "text-rose-300";
-  if (method === "PUT") return "text-sky-300";
-  if (method === "PATCH") return "text-violet-300";
-  if (method === "HEAD") return "text-emerald-200";
-  if (method === "OPTIONS") return "text-pink-300";
-  return "text-sky-300";
-}
-
 function EnvironmentView({
   environment,
   variables,
-  onBack,
   onRename,
   onDelete,
   onSaveVariable,
@@ -1334,7 +1774,6 @@ function EnvironmentView({
 }: {
   environment: Environment;
   variables: EnvironmentVariable[];
-  onBack: () => void;
   onRename: () => void;
   onDelete: () => void;
   onSaveVariable: (
@@ -1345,47 +1784,23 @@ function EnvironmentView({
   onRemoveVariable: (id: string) => Promise<void>;
 }) {
   return (
-    <section className="w-full max-w-4xl self-start pt-5">
-      <button
-        type="button"
-        onClick={onBack}
-        className="inline-flex h-8 items-center gap-2 rounded-lg px-2 text-xs text-muted-foreground hover:bg-white/5 hover:text-white"
-      >
-        <ArrowLeft size={14} /> Volver a peticiones
-      </button>
-      <div className="mt-5 flex min-w-0 items-end justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-[10px] tracking-[0.16em] text-violet-300 uppercase">
-            Environment
-          </p>
-          <h1 className="mt-2 font-sans text-2xl font-semibold tracking-[-0.03em] text-white">
-            Editar {environment.name}
-          </h1>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Gestiona las variables que Flux sustituye al enviar una petición.
-          </p>
-        </div>
-        <div className="mb-1 flex shrink-0 items-center gap-1">
-          <span
-            className="mr-2 size-3 rounded-full"
-            style={{ backgroundColor: environment.color }}
-            aria-label={`Color de ${environment.name}`}
-          />
+    <section className="fx-environment-view">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">
+          Variables de {environment.name}
+        </span>
+        <div className="flex gap-1">
           <button
-            type="button"
+            className="fx-icon-button"
+            aria-label="Renombrar entorno"
             onClick={onRename}
-            title="Renombrar environment"
-            aria-label={`Renombrar environment ${environment.name}`}
-            className="grid size-9 place-items-center rounded-lg border border-white/[0.07] text-muted-foreground hover:bg-violet-400/10 hover:text-violet-300"
           >
             <Pencil size={14} />
           </button>
           <button
-            type="button"
+            className="fx-icon-button"
+            aria-label="Eliminar entorno"
             onClick={onDelete}
-            title="Eliminar environment"
-            aria-label={`Eliminar environment ${environment.name}`}
-            className="grid size-9 place-items-center rounded-lg border border-white/[0.07] text-muted-foreground hover:border-rose-400/20 hover:bg-rose-400/10 hover:text-rose-300"
           >
             <Trash2 size={14} />
           </button>
@@ -1430,28 +1845,9 @@ function VariablesPanel({
   }
   return (
     <>
-      <div className="mt-5 overflow-hidden rounded-xl border border-white/[0.07] bg-[#120c1e]">
-        <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
-          <div>
-            <div className="flex items-center gap-2 text-sm font-medium text-white">
-              <KeyRound size={15} className="text-violet-400" /> Variables ·{" "}
-              {environment.name}
-            </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Usa las claves en requests con{" "}
-              <code className="text-violet-300">{"{{CLAVE}}"}</code>.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-violet-300/15 bg-violet-500/10 px-3 text-xs text-violet-200 hover:bg-violet-500/15"
-          >
-            <Plus size={13} /> Variable
-          </button>
-        </div>
+      <div className="fx-variable-table">
         <div className="grid grid-cols-[minmax(150px,0.7fr)_minmax(220px,1.3fr)_76px] border-b border-white/[0.05] px-5 py-2 text-[9px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-          <span>Clave</span>
+          <span>Variable</span>
           <span>Valor</span>
           <span />
         </div>
@@ -1462,7 +1858,7 @@ function VariablesPanel({
         ) : null}
         {variables.map((variable) => (
           <VariableRow
-            key={variable.id}
+            key={`${environment.id}-${variable.id}`}
             variable={variable}
             onSave={onSave}
             onRemove={async () => setPendingDelete(variable)}
@@ -1470,6 +1866,7 @@ function VariablesPanel({
         ))}
         {adding ? (
           <VariableRow
+            key={environment.id}
             onSave={async (id, key, value) => {
               await onSave(id, key, value);
               setAdding(false);
@@ -1478,6 +1875,13 @@ function VariablesPanel({
           />
         ) : null}
       </div>
+      <button
+        className="fx-quiet-button mt-3"
+        onClick={() => setAdding(true)}
+        disabled={adding}
+      >
+        <Plus size={14} /> Añadir variable
+      </button>
       {pendingDelete ? (
         <ConfirmDeleteDialog
           variable={pendingDelete}
@@ -1503,6 +1907,8 @@ function VariableRow({
   const [key, setKey] = useState(variable?.key ?? "");
   const [value, setValue] = useState(variable?.value ?? "");
   const [saving, setSaving] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
+  const secret = /token|secret|password|api.?key/i.test(key);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -1526,12 +1932,26 @@ function VariableRow({
         maxLength={100}
         className="h-9 rounded-lg border border-white/[0.07] bg-black/15 px-3 font-mono text-xs text-violet-200 outline-none focus:border-violet-400/40"
       />
-      <input
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        placeholder="https://api.example.com"
-        className="h-9 min-w-0 rounded-lg border border-white/[0.07] bg-black/15 px-3 font-mono text-xs text-white outline-none focus:border-violet-400/40"
-      />
+      <div className="fx-variable-value">
+        <input
+          aria-label={`Valor de ${key || "nueva variable"}`}
+          type={secret && !showSecret ? "password" : "text"}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="https://api.example.com"
+          className="h-9 min-w-0 rounded-lg border border-white/[0.07] bg-black/15 px-3 font-mono text-xs text-white outline-none focus:border-violet-400/40"
+        />
+        {secret && (
+          <button
+            className="fx-icon-button"
+            type="button"
+            aria-label={showSecret ? "Ocultar secreto" : "Mostrar secreto"}
+            onClick={() => setShowSecret(!showSecret)}
+          >
+            {showSecret ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        )}
+      </div>
       <div className="flex justify-end gap-1">
         <button
           disabled={saving}

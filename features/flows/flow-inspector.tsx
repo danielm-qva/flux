@@ -1,5 +1,7 @@
 "use client";
 
+import { AppSelect } from "@/components/ui/app-select";
+
 import { Play, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
@@ -105,9 +107,9 @@ export function FlowInspector({
   return (
     <aside className="flex h-full w-[340px] shrink-0 flex-col bg-[var(--flux-panel)] ring-1 ring-[var(--flux-line)]">
       <header className="flex items-center gap-2 p-3 pb-2">
-        <select
+        <AppSelect
           value={node.requestId ?? ""}
-          onChange={(event) => onChangeRequest(event.target.value)}
+          onValueChange={(value) => onChangeRequest(value)}
           aria-label="Petición del paso"
           className={`${field} h-9 flex-1 font-medium text-white`}
         >
@@ -117,7 +119,7 @@ export function FlowInspector({
               {item.method} · {item.name}
             </option>
           ))}
-        </select>
+        </AppSelect>
         <button
           type="button"
           onClick={onDelete}
@@ -269,15 +271,15 @@ export function FlowInspector({
                   return (
                     <li key={assertion.id} className="rounded-lg bg-[var(--flux-panel-2)] p-2 ring-1 ring-[var(--flux-line)]">
                       <div className="flex items-center gap-1.5">
-                        <select
+                        <AppSelect
                           value={assertion.kind}
-                          onChange={(event) => patchCheck(assertion.id, { kind: event.target.value as FlowAssertionKind })}
+                          onValueChange={(value) => patchCheck(assertion.id, { kind: value as FlowAssertionKind })}
                           className={`${field} h-8 flex-1 text-zinc-200`}
                         >
                           {CHECK_KINDS.map((item) => (
                             <option key={item.id} value={item.id}>{item.label}</option>
                           ))}
-                        </select>
+                        </AppSelect>
                         <IconDelete label="Quitar verificación" onClick={() => onChangeAssertions(assertions.filter((item) => item.id !== assertion.id))} />
                       </div>
                       {kind.hasPath ? (
@@ -446,19 +448,19 @@ function InputRow({
                 <input value={options.name ?? ""} onChange={(event) => set({ name: event.target.value })} placeholder={item.name} spellCheck={false} className={`${field} h-8 w-full font-mono`} />
               </Labeled>
               <Labeled label="Valor">
-                <select value={options.valueType ?? "text"} onChange={(event) => set({ valueType: event.target.value as "text" | "raw" })} className={`${field} h-8 w-full`}>
+                <AppSelect value={options.valueType ?? "text"} onValueChange={(value) => set({ valueType: value as "text" | "raw" })} className={`${field} h-8 w-full`}>
                   <option value="text">Texto (entre comillas)</option>
                   <option value="raw">Número, true/false o tal cual</option>
-                </select>
+                </AppSelect>
               </Labeled>
             </>
           ) : null}
 
           {target === "url" ? (
             <Labeled label="Posición">
-              <select
+              <AppSelect
                 value={options.urlMode === "replace" ? String(options.segmentIndex ?? 0) : "append"}
-                onChange={(event) => (event.target.value === "append" ? set({ urlMode: "append", segmentIndex: undefined }) : set({ urlMode: "replace", segmentIndex: Number(event.target.value) }))}
+                onValueChange={(value) => (value === "append" ? set({ urlMode: "append", segmentIndex: undefined }) : set({ urlMode: "replace", segmentIndex: Number(value) }))}
                 className={`${field} h-8 w-full`}
               >
                 <option value="append">Añadir al final de la ruta</option>
@@ -467,7 +469,7 @@ function InputRow({
                     Reemplazar «{segment.text}»
                   </option>
                 ))}
-              </select>
+              </AppSelect>
             </Labeled>
           ) : null}
 

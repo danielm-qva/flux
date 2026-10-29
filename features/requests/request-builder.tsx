@@ -1,10 +1,9 @@
 "use client";
 
+import { AppSelect } from "@/components/ui/app-select";
+
 import {
-  AlertCircle,
-  Braces,
   Check,
-  ChevronDown,
   CirclePlus,
   ClipboardPaste,
   Clock,
@@ -19,7 +18,6 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   ClipboardEvent,
   FormEvent,
-  PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useMemo,
@@ -42,6 +40,7 @@ import {
   type SavedRequest,
 } from "./request-client";
 import { prepareHttpRequest } from "./prepare-http-request";
+import { usePreferences } from "@/features/settings/preferences";
 import { JsonTree } from "./json-tree";
 import { SaveToEnvironmentDialog } from "./save-to-environment-dialog";
 import { EnvironmentAutocomplete } from "./environment-autocomplete";
@@ -72,9 +71,9 @@ type AuthState = {
 
 const METHOD_COLORS: Partial<Record<HttpMethod, string>> = {
   GET: "text-emerald-300",
-  POST: "text-amber-300",
-  PUT: "text-sky-300",
-  PATCH: "text-violet-300",
+  POST: "text-sky-300",
+  PUT: "text-purple-300",
+  PATCH: "text-amber-300",
   DELETE: "text-rose-300",
   HEAD: "text-emerald-200",
   OPTIONS: "text-pink-300",
@@ -107,9 +106,17 @@ export function RequestBuilder({
   onEnvironmentCreated: (environment: Environment) => void;
   request: SavedRequest;
   onSaved: (request: SavedRequest) => void;
-  onExecuted?: (result: { method: string; resolvedUrl: string; response?: HttpResponse; error?: string }) => void;
+  onExecuted?: (result: {
+    method: string;
+    resolvedUrl: string;
+    response?: HttpResponse;
+    error?: string;
+  }) => void;
   onDirtyChange?: (requestId: string, dirty: boolean) => void;
-  registerSave?: (requestId: string, save: () => Promise<boolean>) => () => void;
+  registerSave?: (
+    requestId: string,
+    save: () => Promise<boolean>,
+  ) => () => void;
 }) {
   const [method, setMethod] = useState<HttpMethod>(() =>
     HTTP_METHODS.includes(request.method as HttpMethod)
@@ -117,7 +124,7 @@ export function RequestBuilder({
       : "GET",
   );
   const [url, setUrl] = useState(request.url);
-  const [tab, setTab] = useState<Tab>("params");
+  const [tab, setTab] = useState<Tab>("headers");
   const [params, setParams] = useState<Pair[]>(() =>
     parseSavedValue(request.paramsJson, [
       { id: "param-1", enabled: true, key: "", value: "" },
@@ -149,15 +156,19 @@ export function RequestBuilder({
   const [body, setBody] = useState(() =>
     normalizeBodyValue(request.bodyType, request.body),
   );
+  const preferences = usePreferences();
   const [response, setResponse] = useState<HttpResponse | null>(null);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [curlImporterOpen, setCurlImporterOpen] = useState(false);
   const [automationOpen, setAutomationOpen] = useState(false);
-  const automation = automations?.items.find((item) => item.requestId === request.id) ?? null;
-  const [envTarget, setEnvTarget] = useState<{ path: string; value: string } | null>(null);
-  const [requestHeight, setRequestHeight] = useState(280);
+  const automation =
+    automations?.items.find((item) => item.requestId === request.id) ?? null;
+  const [envTarget, setEnvTarget] = useState<{
+    path: string;
+    value: string;
+  } | null>(null);
   const containerRef = useRef<HTMLElement>(null);
   const sendShortcut = useSendShortcut();
   const resolvedUrl = resolveEnvironmentVariables(url, variables);
@@ -166,7 +177,13 @@ export function RequestBuilder({
     () => [
       ...variables,
       ...flowVariables
-        .filter((item) => !variables.some((variable) => variable.key.toLowerCase() === item.key.toLowerCase()))
+        .filter(
+          (item) =>
+            !variables.some(
+              (variable) =>
+                variable.key.toLowerCase() === item.key.toLowerCase(),
+            ),
+        )
         .map((item) => ({
           id: `flow-${item.key}`,
           environmentId: "",
@@ -178,38 +195,42 @@ export function RequestBuilder({
     ],
     [variables, flowVariables],
   );
-  const dirty = useMemo(() =>
-    method !== request.method || url !== request.url ||
-    JSON.stringify(params) !== request.paramsJson ||
-    JSON.stringify(headers) !== request.headersJson || authType !== request.authType ||
-    JSON.stringify(auth) !== request.authJson || bodyType !== normalizeBodyType(request.bodyType) ||
-    body !== normalizeBodyValue(request.bodyType, request.body),
+  const generatedHeaders = useMemo(() => {
+    try {
+      return prepareHttpRequest(
+        { method, url, headers, authType, auth, bodyType, body },
+        variables,
+      ).headers.filter(
+        (generated) =>
+          !headers.some(
+            (row) =>
+              row.enabled &&
+              row.key.trim().toLowerCase() === generated.name.toLowerCase() &&
+              resolveEnvironmentVariables(row.value, variables) ===
+                generated.value,
+          ),
+      );
+    } catch {
+      return [];
+    }
+  }, [method, url, headers, authType, auth, bodyType, body, variables]);
+  const dirty = useMemo(
+    () =>
+      method !== request.method ||
+      url !== request.url ||
+      JSON.stringify(params) !== request.paramsJson ||
+      JSON.stringify(headers) !== request.headersJson ||
+      authType !== request.authType ||
+      JSON.stringify(auth) !== request.authJson ||
+      bodyType !== normalizeBodyType(request.bodyType) ||
+      body !== normalizeBodyValue(request.bodyType, request.body),
     [auth, authType, body, bodyType, headers, method, params, request, url],
   );
 
-  useEffect(() => onDirtyChange?.(request.id, dirty), [dirty, onDirtyChange, request.id]);
-
-  function startResize(event: ReactPointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    const startY = event.clientY;
-    const startHeight = requestHeight;
-    const maxHeight = Math.max(
-      160,
-      (containerRef.current?.clientHeight ?? 700) - 200,
-    );
-    const move = (e: PointerEvent) =>
-      setRequestHeight(
-        Math.min(maxHeight, Math.max(120, startHeight + e.clientY - startY)),
-      );
-    const stop = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", stop);
-      document.body.style.cursor = "";
-    };
-    document.body.style.cursor = "row-resize";
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", stop);
-  }
+  useEffect(
+    () => onDirtyChange?.(request.id, dirty),
+    [dirty, onDirtyChange, request.id],
+  );
 
   function updateParams(next: Pair[]) {
     setParams(next);
@@ -272,15 +293,26 @@ export function RequestBuilder({
     if (authType === "bearer") syncBearerHeader(nextAuth.token);
   }
 
-  async function sendRequest() {
+  async function sendRequest(overrideHeaders?: Pair[]) {
     setSending(true);
     setRequestError(null);
     try {
       const prepared = prepareHttpRequest(
-        { method, url, headers, authType, auth, bodyType, body },
+        {
+          method,
+          url,
+          headers: overrideHeaders ?? headers,
+          authType,
+          auth,
+          bodyType,
+          body,
+        },
         variables,
       );
-      const result = await executeHttpRequest({ ...prepared, timeoutMs: 30_000 });
+      const result = await executeHttpRequest({
+        ...prepared,
+        timeoutMs: preferences.timeoutMs,
+      });
       setResponse(result);
       onExecuted?.({ method, resolvedUrl, response: result });
     } catch (cause) {
@@ -293,38 +325,60 @@ export function RequestBuilder({
     }
   }
 
-  const saveRequest = useCallback(async (showFeedback = true) => {
-    if (!dirty) return true;
-    setSaving(true);
-    try {
-      const saved = await savedRequestApi.update(userId, {
-        id: request.id,
-        name: request.name,
-        method,
-        url,
-        paramsJson: JSON.stringify(params),
-        headersJson: JSON.stringify(headers),
-        authType,
-        authJson: JSON.stringify(auth),
-        bodyType,
-        body,
-      });
-      onSaved(saved);
-      if (showFeedback) toast.success("Petición guardada", {
-        description: `${saved.name} se actualizó en ${workspace.name}.`,
-      });
-      return true;
-    } catch (cause) {
-      toast.error("No se pudo guardar la petición", {
-        description: String(cause),
-      });
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }, [auth, authType, body, bodyType, dirty, headers, method, onSaved, params, request.id, request.name, userId, url, workspace.name]);
+  const saveRequest = useCallback(
+    async (showFeedback = true) => {
+      if (!dirty) return true;
+      setSaving(true);
+      try {
+        const saved = await savedRequestApi.update(userId, {
+          id: request.id,
+          name: request.name,
+          method,
+          url,
+          paramsJson: JSON.stringify(params),
+          headersJson: JSON.stringify(headers),
+          authType,
+          authJson: JSON.stringify(auth),
+          bodyType,
+          body,
+        });
+        onSaved(saved);
+        if (showFeedback)
+          toast.success("Petición guardada", {
+            description: `${saved.name} se actualizó en ${workspace.name}.`,
+          });
+        return true;
+      } catch (cause) {
+        toast.error("No se pudo guardar la petición", {
+          description: String(cause),
+        });
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [
+      auth,
+      authType,
+      body,
+      bodyType,
+      dirty,
+      headers,
+      method,
+      onSaved,
+      params,
+      request.id,
+      request.name,
+      userId,
+      url,
+      workspace.name,
+    ],
+  );
 
-  useEffect(() => registerSave?.(request.id, () => saveRequest(false)), [registerSave, request.id, saveRequest]);
+  useEffect(
+    () => registerSave?.(request.id, () => saveRequest(false)),
+    [registerSave, request.id, saveRequest],
+  );
 
   function handleUrlPaste(event: ClipboardEvent<HTMLDivElement>) {
     const text = event.clipboardData.getData("text").trim();
@@ -405,7 +459,7 @@ export function RequestBuilder({
   return (
     <section
       ref={containerRef}
-      className="flex h-full min-h-0 w-full flex-col"
+      className="fx-builder"
       onKeyDown={(event) => {
         if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
           event.preventDefault();
@@ -413,190 +467,271 @@ export function RequestBuilder({
         }
       }}
     >
-      <div
-        style={{ height: requestHeight }}
-        className="flex min-h-[160px] shrink-0 flex-col overflow-hidden rounded-xl bg-[var(--flux-panel)] ring-1 ring-[var(--flux-line)]"
-      >
-      <div className="flex shrink-0 items-center gap-2 p-3 pb-1">
-        <div className="relative shrink-0">
-          <select
-            value={method}
-            onChange={(event) => setMethod(event.target.value as HttpMethod)}
-            aria-label="Método HTTP"
-            className={`h-10 appearance-none rounded-md bg-[var(--flux-well)] ring-1 ring-[var(--flux-line)] pr-7 pl-3 font-mono text-xs font-bold outline-none focus:ring-[var(--flux-primary-border)] ${METHOD_COLORS[method] ?? "text-violet-200"}`}
-          >
-            {HTTP_METHODS.map((item) => (
-              <option
-                key={item}
-                value={item}
-                className={`bg-[var(--flux-raised)] font-mono font-bold ${METHOD_COLORS[item]}`}
-              >
-                {item}
-              </option>
-            ))}
-          </select>
-          <ChevronDown
-            size={12}
-            className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-muted-foreground"
-          />
-        </div>
-        <div className="min-w-0 flex-1" onPasteCapture={handleUrlPaste}>
-        <EnvironmentAutocomplete
-          id="request-url"
-          value={url}
-          onChange={setUrl}
-          variables={suggestionVariables}
-          highlightVariables
-          placeholder="{{BASE_URL}}/v1/resource"
-          wrapperClassName="w-full"
-          className="h-10 w-full rounded-md bg-transparent px-3 font-mono text-sm text-white outline-none placeholder:text-muted-foreground/40"
-        />
-        </div>
-        <button
-          type="button"
-          onClick={sendRequest}
-          disabled={sending}
-          className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-violet-600 px-5 text-sm font-semibold text-white shadow-[0_0_22px_var(--flux-glow)] transition hover:bg-violet-500 active:scale-[0.97] disabled:cursor-wait disabled:opacity-65"
-        >
-          {sending ? (
-            <LoaderCircle size={13} className="animate-spin" />
-          ) : (
-            <Send size={13} />
-          )}
-          {sending ? "Enviando" : "Enviar"}
-          {!sending ? (
-            <kbd className="ml-1 hidden rounded bg-black/25 px-1.5 py-0.5 font-sans text-[10px] font-medium text-white/70 lg:inline">
-              {sendShortcut}
-            </kbd>
-          ) : null}
-        </button>
-        <button
-          type="button"
-          onClick={() => void saveRequest(true)}
-          disabled={saving}
-          title="Guardar"
-          aria-label="Guardar petición"
-          className="grid size-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white disabled:cursor-wait disabled:opacity-65"
-        >
-          {saving ? <LoaderCircle size={14} className="animate-spin" /> : <Save size={14} />}
-        </button>
-        {automations ? (
+      <div className="fx-request-pane">
+        <div className="fx-request-bar">
+          <div className="relative shrink-0">
+            <AppSelect
+              value={method}
+              onValueChange={(value) => setMethod(value as HttpMethod)}
+              aria-label="Método HTTP"
+              className={`h-10 appearance-none rounded-md bg-[var(--flux-well)] ring-1 ring-[var(--flux-line)] pr-7 pl-3 font-mono text-xs font-bold outline-none focus:ring-[var(--flux-primary-border)] ${METHOD_COLORS[method] ?? "text-violet-200"}`}
+            >
+              {HTTP_METHODS.map((item) => (
+                <option
+                  key={item}
+                  value={item}
+                  className={`bg-[var(--flux-raised)] font-mono font-bold ${METHOD_COLORS[item]}`}
+                >
+                  {item}
+                </option>
+              ))}
+            </AppSelect>
+          </div>
+          <div className="min-w-0 flex-1" onPasteCapture={handleUrlPaste}>
+            <EnvironmentAutocomplete
+              id="request-url"
+              value={url}
+              onChange={setUrl}
+              variables={suggestionVariables}
+              highlightVariables
+              placeholder="{{BASE_URL}}/v1/resource"
+              wrapperClassName="w-full"
+              className="h-10 w-full rounded-md bg-transparent px-3 font-mono text-sm text-white outline-none placeholder:text-muted-foreground/40"
+            />
+          </div>
           <button
             type="button"
-            onClick={() => setAutomationOpen(true)}
-            title={automation ? (automation.enabled ? "Automatización activa" : "Automatización en pausa") : "Automatizar esta petición"}
-            aria-label="Automatizar petición"
-            className={`relative grid size-9 shrink-0 place-items-center rounded-md transition hover:bg-white/[0.06] hover:text-white ${automation?.enabled ? "text-[var(--flux-primary-text)]" : "text-muted-foreground"}`}
+            onClick={() => void sendRequest()}
+            disabled={sending}
+            className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-violet-600 px-5 text-sm font-semibold text-white shadow-[0_0_22px_var(--flux-glow)] transition hover:bg-violet-500 active:scale-[0.97] disabled:cursor-wait disabled:opacity-65"
           >
-            <Clock size={14} />
-            {automation?.enabled ? <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-emerald-400" /> : null}
+            {sending ? (
+              <LoaderCircle size={13} className="animate-spin" />
+            ) : (
+              <Send size={13} />
+            )}
+            {sending ? "Enviando" : "Enviar"}
+            {!sending ? (
+              <kbd className="ml-1 hidden rounded bg-black/25 px-1.5 py-0.5 font-sans text-[10px] font-medium text-white/70 lg:inline">
+                {sendShortcut}
+              </kbd>
+            ) : null}
           </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={() => setCurlImporterOpen(true)}
-          title="Importar cURL"
-          aria-label="Importar cURL"
-          className="grid size-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white"
-        >
-          <ClipboardPaste size={14} />
-        </button>
-      </div>
-      {url.includes("{{") ? (
-        <p className="mx-4 mt-1 shrink-0 truncate font-mono text-[10px] text-muted-foreground">
-          →{" "}
-          <span
-            className={
-              resolvedUrl === url ? "text-amber-300" : "text-violet-200"
-            }
+          <button
+            type="button"
+            onClick={() => void saveRequest(true)}
+            disabled={saving}
+            title="Guardar"
+            aria-label="Guardar petición"
+            className="grid size-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white disabled:cursor-wait disabled:opacity-65"
           >
-            {resolvedUrl}
-          </span>
-        </p>
-      ) : null}
-
-      <div className="mt-1 flex min-h-0 flex-1 flex-col overflow-hidden">
-        <div className="flex shrink-0 gap-1 px-2">
-          <TabButton
-            label="Params"
-            count={params.filter((item) => item.enabled && item.key).length}
-            active={tab === "params"}
-            onClick={() => setTab("params")}
-          />
-          <TabButton
-            label="Headers"
-            count={headers.filter((item) => item.enabled && item.key).length}
-            active={tab === "headers"}
-            onClick={() => setTab("headers")}
-          />
-          <TabButton
-            label="Auth"
-            active={tab === "auth"}
-            onClick={() => setTab("auth")}
-          />
-          <TabButton
-            label="Body"
-            active={tab === "body"}
-            onClick={() => setTab("body")}
-          />
+            {saving ? (
+              <LoaderCircle size={14} className="animate-spin" />
+            ) : (
+              <Save size={14} />
+            )}
+          </button>
+          {automations ? (
+            <button
+              type="button"
+              onClick={() => setAutomationOpen(true)}
+              title={
+                automation
+                  ? automation.enabled
+                    ? "Automatización activa"
+                    : "Automatización en pausa"
+                  : "Automatizar esta petición"
+              }
+              aria-label="Automatizar petición"
+              className={`relative grid size-9 shrink-0 place-items-center rounded-md transition hover:bg-white/[0.06] hover:text-white ${automation?.enabled ? "text-[var(--flux-primary-text)]" : "text-muted-foreground"}`}
+            >
+              <Clock size={14} />
+              {automation?.enabled ? (
+                <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-emerald-400" />
+              ) : null}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setCurlImporterOpen(true)}
+            title="Importar cURL"
+            aria-label="Importar cURL"
+            className="grid size-9 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-white/[0.06] hover:text-white"
+          >
+            <ClipboardPaste size={14} />
+          </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {tab === "params" ? (
-            <PairsEditor
-              title="Query params"
-              rows={params}
-              onChange={updateParams}
-              variables={suggestionVariables}
-            />
-          ) : null}
-          {tab === "headers" ? (
-            <PairsEditor
-              title="Headers"
-              rows={headers}
-              onChange={setHeaders}
-              variables={suggestionVariables}
-              keyPlaceholder="Authorization"
-              valuePlaceholder="Bearer {{TOKEN}}"
-            />
-          ) : null}
-          {tab === "auth" ? (
-            <AuthEditor
-              type={authType}
-              onTypeChange={changeAuthType}
-              value={auth}
-              onChange={changeAuth}
-              variables={suggestionVariables}
-            />
-          ) : null}
-          {tab === "body" ? (
-            <BodyEditor
-              type={bodyType}
-              onTypeChange={setBodyType}
-              value={body}
-              onChange={setBody}
-              variables={suggestionVariables}
-            />
-          ) : null}
-          {requestError ? (
-            <div className="m-3 rounded-md border border-rose-400/20 bg-rose-400/[0.07] px-3 py-2 text-xs text-rose-200">
-              {requestError}
-            </div>
-          ) : null}
-        </div>
-      </div>
-      </div>
+        {url.includes("{{") ? (
+          <p className="mx-4 mt-1 shrink-0 truncate font-mono text-[10px] text-muted-foreground">
+            →{" "}
+            <span
+              className={
+                resolvedUrl === url ? "text-amber-300" : "text-violet-200"
+              }
+            >
+              {resolvedUrl}
+            </span>
+          </p>
+        ) : null}
 
-      <div
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Redimensionar respuesta"
-        onPointerDown={startResize}
-        className="group relative z-10 h-3 shrink-0 cursor-row-resize touch-none"
-      >
-        <span className="absolute top-1/2 left-1/2 h-1 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.08] transition-colors group-hover:bg-violet-400/60" />
+        <div className="fx-request-editor">
+          <div className="fx-request-tabs">
+            <TabButton
+              label="Parámetros"
+              count={params.filter((item) => item.enabled && item.key).length}
+              active={tab === "params"}
+              onClick={() => setTab("params")}
+            />
+            <TabButton
+              label="Encabezados"
+              count={headers.filter((item) => item.enabled && item.key).length}
+              active={tab === "headers"}
+              onClick={() => setTab("headers")}
+            />
+            <TabButton
+              label="Auth"
+              active={tab === "auth"}
+              onClick={() => setTab("auth")}
+            />
+            <TabButton
+              label="Cuerpo"
+              active={tab === "body"}
+              onClick={() => setTab("body")}
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {tab === "params" ? (
+              <PairsEditor
+                title="Parámetros"
+                rows={params}
+                onChange={updateParams}
+                variables={suggestionVariables}
+              />
+            ) : null}
+            {tab === "headers" ? (
+              <>
+                <PairsEditor
+                  title="Encabezados"
+                  rows={headers}
+                  onChange={setHeaders}
+                  variables={suggestionVariables}
+                  keyPlaceholder="Authorization"
+                  valuePlaceholder="Bearer {{TOKEN}}"
+                />
+                {generatedHeaders.length > 0 && (
+                  <details
+                    className="fx-generated-headers"
+                    open={!preferences.foldHeaders}
+                  >
+                    <summary>
+                      {generatedHeaders.length} generados por la configuración
+                    </summary>
+                    {generatedHeaders.map((header, index) => (
+                      <div key={`${header.name}-${index}`}>
+                        <span>{header.name}</span>
+                        <span>
+                          {/authorization|token|key|secret/i.test(header.name)
+                            ? "••••••••"
+                            : header.value}
+                        </span>
+                      </div>
+                    ))}
+                  </details>
+                )}
+              </>
+            ) : null}
+            {tab === "auth" ? (
+              <AuthEditor
+                type={authType}
+                onTypeChange={changeAuthType}
+                value={auth}
+                onChange={changeAuth}
+                variables={suggestionVariables}
+              />
+            ) : null}
+            {tab === "body" ? (
+              <BodyEditor
+                type={bodyType}
+                onTypeChange={setBodyType}
+                value={body}
+                onChange={setBody}
+                variables={suggestionVariables}
+              />
+            ) : null}
+            {requestError ? (
+              <div className="m-3 rounded-md border border-rose-400/20 bg-rose-400/[0.07] px-3 py-2 text-xs text-rose-200">
+                {requestError}
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       <ResponsePanel
+        insight={
+          preferences.suggestions &&
+          response?.status === 401 &&
+          !generatedHeaders.some(
+            (header) => header.name.toLowerCase() === "authorization",
+          ) &&
+          !headers.some(
+            (row) => row.enabled && row.key.toLowerCase() === "authorization",
+          ) ? (
+            <div className="fx-insight">
+              <h3>Falta el token Bearer</h3>
+              <p>
+                La API requiere autorización.
+                {variables.some(
+                  (variable) => variable.key === "TOKEN" && variable.value,
+                )
+                  ? " Tu entorno ya tiene TOKEN: puedes añadirlo y reenviar."
+                  : " Añade un token en la pestaña Auth."}
+              </p>
+              <button
+                className="fx-quiet-button"
+                onClick={() => {
+                  if (
+                    variables.some(
+                      (variable) => variable.key === "TOKEN" && variable.value,
+                    )
+                  ) {
+                    const next = [
+                      ...headers,
+                      {
+                        id: `bearer-${Date.now()}`,
+                        enabled: true,
+                        key: "Authorization",
+                        value: "Bearer {{TOKEN}}",
+                      },
+                    ];
+                    setHeaders(next);
+                    void sendRequest(next);
+                  } else setTab("auth");
+                }}
+              >
+                {variables.some(
+                  (variable) => variable.key === "TOKEN" && variable.value,
+                )
+                  ? "Añadir Authorization y reenviar"
+                  : "Configurar Auth"}
+              </button>
+            </div>
+          ) : preferences.suggestions && response?.status === 415 ? (
+            <div className="fx-insight">
+              <h3>Revisa el tipo de contenido</h3>
+              <p>
+                La API no acepta el formato enviado. Revisa el cuerpo y su
+                Content-Type.
+              </p>
+              <button
+                className="fx-quiet-button"
+                onClick={() => setTab("body")}
+              >
+                Revisar cuerpo
+              </button>
+            </div>
+          ) : undefined
+        }
         response={response}
         loading={sending}
         onSaveToEnv={(path, value) => setEnvTarget({ path, value })}
@@ -661,13 +796,12 @@ function TabButton({
     <button
       type="button"
       onClick={onClick}
-      className={`relative flex h-9 items-center gap-1.5 px-3 text-xs ${active ? "text-violet-200" : "text-muted-foreground hover:text-white"}`}
+      aria-pressed={active}
+      className={`fx-editor-tab ${active ? "is-on" : ""}`}
     >
       {label}
       {count ? (
-        <span className="text-[10px] text-violet-300">
-          {count}
-        </span>
+        <span className="text-[10px] text-violet-300">{count}</span>
       ) : null}
       {active ? (
         <span className="absolute inset-x-0 bottom-0 h-0.5 bg-violet-400" />
@@ -710,7 +844,7 @@ function PairsEditor({
   }
   return (
     <div>
-      <div className="grid grid-cols-[32px_minmax(130px,0.8fr)_minmax(180px,1.2fr)_42px] px-3 py-1.5 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
+      <div className="fx-pairs-heading grid grid-cols-[32px_minmax(130px,0.8fr)_minmax(180px,1.2fr)_42px] px-3 py-1.5 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
         <span />
         <span>Clave</span>
         <span>Valor</span>
@@ -719,7 +853,7 @@ function PairsEditor({
       {rows.map((row) => (
         <div
           key={row.id}
-          className="grid grid-cols-[32px_minmax(130px,0.8fr)_minmax(180px,1.2fr)_42px] items-center px-3 py-0.5"
+          className="fx-pairs-row grid grid-cols-[32px_minmax(130px,0.8fr)_minmax(180px,1.2fr)_42px] items-center px-3 py-0.5"
         >
           <input
             type="checkbox"
@@ -780,20 +914,28 @@ function AuthEditor({
   const patch = (key: keyof AuthState, next: string) =>
     onChange({ ...value, [key]: next });
   return (
-    <div className="p-5">
-      <label className="block max-w-xs text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-        Tipo de autorización
-        <select
-          value={type}
-          onChange={(event) => onTypeChange(event.target.value)}
-          className="mt-2 h-10 w-full rounded-lg border border-white/[0.08] bg-[var(--flux-raised)] px-3 text-xs text-white outline-none"
-        >
-          <option value="none">Sin autorización</option>
-          <option value="bearer">Bearer token</option>
-          <option value="basic">Basic auth</option>
-          <option value="api-key">API key</option>
-        </select>
-      </label>
+    <div className="fx-auth-editor">
+      <div
+        className="fx-segments fx-auth-types"
+        role="group"
+        aria-label="Tipo de autorización"
+      >
+        {[
+          ["none", "Ninguna"],
+          ["bearer", "Bearer"],
+          ["basic", "Básica"],
+          ["api-key", "API key"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={type === id}
+            onClick={() => onTypeChange(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {type === "bearer" ? (
         <Field
           label="Token"
@@ -804,7 +946,7 @@ function AuthEditor({
         />
       ) : null}
       {type === "basic" ? (
-        <div className="grid max-w-2xl grid-cols-2 gap-3">
+        <div className="fx-auth-fields">
           <Field
             label="Usuario"
             placeholder="usuario"
@@ -822,9 +964,9 @@ function AuthEditor({
         </div>
       ) : null}
       {type === "api-key" ? (
-        <div className="grid max-w-2xl grid-cols-2 gap-3">
+        <div className="fx-auth-fields">
           <Field
-            label="Clave"
+            label="Nombre"
             placeholder="X-API-Key"
             value={value.apiKeyName}
             onChange={(next) => patch("apiKeyName", next)}
@@ -862,14 +1004,18 @@ function Field({
   variables: EnvironmentVariable[];
 }) {
   return (
-    <label className="mt-5 block text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+    <label className="fx-auth-field">
       {label}
       <EnvironmentAutocomplete
         value={value}
         onChange={onChange}
         variables={variables}
         placeholder={placeholder}
-        className="mt-2 h-10 w-full rounded-lg border border-white/[0.08] bg-black/15 px-3 font-mono text-xs text-white outline-none focus:border-violet-400/40"
+        ariaLabel={label}
+        highlightVariables
+        variableChips
+        wrapperClassName="fx-auth-input-wrapper"
+        className="fx-auth-input"
       />
     </label>
   );
@@ -912,69 +1058,18 @@ function BodyEditor({
     if (formatted != null && formatted !== value) onChange(formatted);
   }
 
+  const bodySize = new TextEncoder().encode(value).byteLength;
+  const formSelected = type === "form-data" || type === "urlencoded";
+
   return (
-    <div>
-      <div className="flex min-h-14 flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/[0.045] px-5 py-3">
-        {BODY_TYPES.map(([id, label]) => (
-          <label
-            key={id}
-            className={`flex cursor-pointer items-center gap-1.5 text-[10px] transition-colors ${mainType === id ? "text-white" : "text-muted-foreground hover:text-violet-200"}`}
-          >
-            <input
-              type="radio"
-              name="body-type"
-              value={id}
-              checked={mainType === id}
-              onChange={() => changeMainType(id)}
-              className="size-3 accent-violet-500"
-            />
-            {label}
-          </label>
-        ))}
-        {mainType === "raw" ? (
-          <div className="ml-auto flex items-center gap-2">
-            {jsonValidity ? (
-              jsonValidity.valid ? (
-                <span className="flex items-center gap-1 text-[10px] font-medium text-emerald-400">
-                  <Check size={12} /> JSON válido
-                </span>
-              ) : (
-                <span
-                  title={jsonValidity.error}
-                  className="flex items-center gap-1 text-[10px] font-medium text-red-400"
-                >
-                  <AlertCircle size={12} /> JSON inválido
-                </span>
-              )
-            ) : null}
-            {canFormat ? (
-              <button
-                type="button"
-                onClick={formatBody}
-                className="flex h-8 items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 text-[10px] font-medium text-violet-100 outline-none transition-colors hover:bg-violet-500/20"
-              >
-                <Braces size={12} /> Formatear
-              </button>
-            ) : null}
-            <label className="relative">
-              <select
-                value={rawType}
-                onChange={(event) => onTypeChange(`raw:${event.target.value}`)}
-                className="h-8 appearance-none rounded-lg border border-violet-500/30 bg-violet-500/15 px-3 pr-8 text-[10px] font-medium text-violet-100 outline-none hover:bg-violet-500/25"
-              >
-                <option className="bg-[var(--flux-raised)] text-violet-100" value="json">JSON</option>
-                <option className="bg-[var(--flux-raised)] text-violet-100" value="text">Text</option>
-                <option className="bg-[var(--flux-raised)] text-violet-100" value="xml">XML</option>
-                <option className="bg-[var(--flux-raised)] text-violet-100" value="html">HTML</option>
-              </select>
-              <ChevronDown
-                size={12}
-                className="pointer-events-none absolute top-2.5 right-2.5 text-violet-300"
-              />
-            </label>
-          </div>
-        ) : null}
+    <div className="fx-body-editor">
+      <div className="fx-body-toolbar">
+        <div className="fx-segments fx-body-types" role="group" aria-label="Formato del cuerpo">
+          {[["none", "Ninguno"], ["raw:json", "JSON"], ["form", "Formulario"], ["raw:text", "Texto"]].map(([id, label]) => <button key={id} type="button" aria-pressed={id === "form" ? formSelected : type === id} onClick={() => id === "form" ? changeMainType("urlencoded") : onTypeChange(id)}>{label}</button>)}
+        </div>
+        {mainType === "raw" && canFormat ? <button type="button" className="fx-body-format" onClick={formatBody}>Formatear</button> : null}
       </div>
+      {(formSelected || ["binary", "graphql", "raw:xml", "raw:html"].includes(type)) && <div className="fx-body-form-options"><AppSelect aria-label="Codificación y formatos adicionales" value={type} onValueChange={(value) => changeMainType(value)}><optgroup label="Formulario"><option value="urlencoded">URL encoded</option><option value="form-data">Multipart · archivos</option></optgroup><optgroup label="Otros formatos"><option value="raw:xml">XML</option><option value="raw:html">HTML</option><option value="binary">Binario</option><option value="graphql">GraphQL</option></optgroup></AppSelect></div>}
       {type === "none" ? (
         <p className="py-24 text-center text-xs text-muted-foreground">
           Esta petición no enviará body.
@@ -994,22 +1089,15 @@ function BodyEditor({
           onChange={onChange}
           variables={variables}
           ariaLabel="Body de la petición"
-          placeholder={'Escribe {{ para usar variables'}
-          className="min-h-[290px] w-full resize-none bg-black/20 p-5 font-mono text-xs leading-6 text-violet-100 outline-none"
+          placeholder={"Escribe {{ para usar variables"}
+          className="fx-body-code"
+          wrapperClassName="fx-body-code-wrapper"
         />
       )}
+      {mainType === "raw" && <p className={`fx-body-status ${jsonValidity && !jsonValidity.valid ? "is-invalid" : ""}`} role="status" title={jsonValidity && !jsonValidity.valid ? jsonValidity.error : undefined}>{jsonValidity ? jsonValidity.valid ? "JSON válido" : "JSON inválido" : rawType.toUpperCase()} · {bodySize} B · Content-Type se ajusta solo</p>}
     </div>
   );
 }
-
-const BODY_TYPES = [
-  ["none", "none"],
-  ["form-data", "form-data"],
-  ["urlencoded", "x-www-form-urlencoded"],
-  ["raw", "raw"],
-  ["binary", "binary"],
-  ["graphql", "GraphQL"],
-] as const;
 
 function BodyFieldsEditor({
   value,
@@ -1024,63 +1112,278 @@ function BodyFieldsEditor({
     update(rows.map((row) => (row.id === id ? { ...row, ...values } : row)));
   return (
     <div>
-      <BodyTableHeader onAdd={() => update([...rows, emptyBodyField("text")])} />
+      <BodyTableHeader
+        onAdd={() => update([...rows, emptyBodyField("text")])}
+      />
       {rows.map((row) => (
         <div
           key={row.id}
           className="grid grid-cols-[32px_88px_minmax(120px,.8fr)_minmax(180px,1.2fr)_42px] items-center border-b border-white/[0.04] px-4 py-2"
         >
-          <input type="checkbox" checked={row.enabled} onChange={(event) => patch(row.id, { enabled: event.target.checked })} className="accent-violet-500" aria-label="Activar campo" />
-          <select value={row.kind} onChange={(event) => patch(row.id, { kind: event.target.value as BodyField["kind"], value: "" })} className="h-8 bg-transparent text-[10px] text-violet-200 outline-none"><option value="text">Text</option><option value="file">File</option></select>
-          <input value={row.key} onChange={(event) => patch(row.id, { key: event.target.value })} placeholder="clave" autoComplete="off" className="h-9 border-r border-white/[0.05] bg-transparent px-3 font-mono text-xs text-violet-100 outline-none" />
+          <input
+            type="checkbox"
+            checked={row.enabled}
+            onChange={(event) =>
+              patch(row.id, { enabled: event.target.checked })
+            }
+            className="accent-violet-500"
+            aria-label="Activar campo"
+          />
+          <AppSelect
+            value={row.kind}
+            onValueChange={(value) =>
+              patch(row.id, {
+                kind: value as BodyField["kind"],
+                value: "",
+              })
+            }
+            className="h-8 bg-transparent text-[10px] text-violet-200 outline-none"
+          >
+            <option value="text">Text</option>
+            <option value="file">File</option>
+          </AppSelect>
+          <input
+            value={row.key}
+            onChange={(event) => patch(row.id, { key: event.target.value })}
+            placeholder="clave"
+            autoComplete="off"
+            className="h-9 border-r border-white/[0.05] bg-transparent px-3 font-mono text-xs text-violet-100 outline-none"
+          />
           {row.kind === "file" ? (
-            <button type="button" onClick={async () => { const path = await chooseBodyFile(); if (path) patch(row.id, { value: path }); }} className="flex h-9 min-w-0 items-center gap-2 truncate px-3 text-left font-mono text-[10px] text-muted-foreground hover:text-violet-200"><FileUp size={13} className="shrink-0" /><span className="truncate">{fileName(row.value) || "Elegir archivo"}</span></button>
+            <button
+              type="button"
+              onClick={async () => {
+                const path = await chooseBodyFile();
+                if (path) patch(row.id, { value: path });
+              }}
+              className="flex h-9 min-w-0 items-center gap-2 truncate px-3 text-left font-mono text-[10px] text-muted-foreground hover:text-violet-200"
+            >
+              <FileUp size={13} className="shrink-0" />
+              <span className="truncate">
+                {fileName(row.value) || "Elegir archivo"}
+              </span>
+            </button>
           ) : (
-            <input value={row.value} onChange={(event) => patch(row.id, { value: event.target.value })} placeholder="valor" autoComplete="off" spellCheck={false} className="h-9 min-w-0 bg-transparent px-3 font-mono text-xs text-white outline-none" />
+            <input
+              value={row.value}
+              onChange={(event) => patch(row.id, { value: event.target.value })}
+              placeholder="valor"
+              autoComplete="off"
+              spellCheck={false}
+              className="h-9 min-w-0 bg-transparent px-3 font-mono text-xs text-white outline-none"
+            />
           )}
-          <RemoveBodyRow onClick={() => update(removeOrReset(rows, row.id, () => emptyBodyField("text")))} />
+          <RemoveBodyRow
+            onClick={() =>
+              update(removeOrReset(rows, row.id, () => emptyBodyField("text")))
+            }
+          />
         </div>
       ))}
     </div>
   );
 }
 
-function BodyPairsEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function BodyPairsEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
   const rows = parseSavedValue<Pair[]>(value, [emptyPair("body-param")]);
   const update = (next: Pair[]) => onChange(JSON.stringify(next));
-  const patch = (id: string, values: Partial<Pair>) => update(rows.map((row) => row.id === id ? { ...row, ...values } : row));
-  return <div><BodyTableHeader onAdd={() => update([...rows, emptyPair("body-param")])} simple />{rows.map((row) => <div key={row.id} className="grid grid-cols-[32px_minmax(130px,.8fr)_minmax(180px,1.2fr)_42px] items-center border-b border-white/[0.04] px-4 py-2"><input type="checkbox" checked={row.enabled} onChange={(event) => patch(row.id, { enabled: event.target.checked })} className="accent-violet-500" aria-label="Activar campo"/><input value={row.key} onChange={(event) => patch(row.id, { key: event.target.value })} placeholder="clave" autoComplete="off" className="h-9 border-r border-white/[0.05] bg-transparent px-3 font-mono text-xs text-violet-100 outline-none"/><input value={row.value} onChange={(event) => patch(row.id, { value: event.target.value })} placeholder="valor" autoComplete="off" spellCheck={false} className="h-9 min-w-0 bg-transparent px-3 font-mono text-xs text-white outline-none"/><RemoveBodyRow onClick={() => update(removeOrReset(rows, row.id, () => emptyPair("body-param")))}/></div>)}</div>;
+  const patch = (id: string, values: Partial<Pair>) =>
+    update(rows.map((row) => (row.id === id ? { ...row, ...values } : row)));
+  return (
+    <div>
+      <BodyTableHeader
+        onAdd={() => update([...rows, emptyPair("body-param")])}
+        simple
+      />
+      {rows.map((row) => (
+        <div
+          key={row.id}
+          className="grid grid-cols-[32px_minmax(130px,.8fr)_minmax(180px,1.2fr)_42px] items-center border-b border-white/[0.04] px-4 py-2"
+        >
+          <input
+            type="checkbox"
+            checked={row.enabled}
+            onChange={(event) =>
+              patch(row.id, { enabled: event.target.checked })
+            }
+            className="accent-violet-500"
+            aria-label="Activar campo"
+          />
+          <input
+            value={row.key}
+            onChange={(event) => patch(row.id, { key: event.target.value })}
+            placeholder="clave"
+            autoComplete="off"
+            className="h-9 border-r border-white/[0.05] bg-transparent px-3 font-mono text-xs text-violet-100 outline-none"
+          />
+          <input
+            value={row.value}
+            onChange={(event) => patch(row.id, { value: event.target.value })}
+            placeholder="valor"
+            autoComplete="off"
+            spellCheck={false}
+            className="h-9 min-w-0 bg-transparent px-3 font-mono text-xs text-white outline-none"
+          />
+          <RemoveBodyRow
+            onClick={() =>
+              update(removeOrReset(rows, row.id, () => emptyPair("body-param")))
+            }
+          />
+        </div>
+      ))}
+    </div>
+  );
 }
 
-function BodyTableHeader({ onAdd, simple = false }: { onAdd: () => void; simple?: boolean }) {
-  return <><div className="flex items-center justify-between border-b border-white/[0.045] px-5 py-3"><span className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">Campos del body</span><button type="button" onClick={onAdd} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs text-violet-300 hover:bg-violet-400/10"><CirclePlus size={14}/> Añadir</button></div><div className={`grid ${simple ? "grid-cols-[32px_minmax(130px,.8fr)_minmax(180px,1.2fr)_42px]" : "grid-cols-[32px_88px_minmax(120px,.8fr)_minmax(180px,1.2fr)_42px]"} border-b border-white/[0.04] px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase`}><span/>{simple ? null : <span>Tipo</span>}<span>Clave</span><span>Valor</span><span/></div></>;
+function BodyTableHeader({
+  onAdd,
+  simple = false,
+}: {
+  onAdd: () => void;
+  simple?: boolean;
+}) {
+  return (
+    <>
+      <div className="flex items-center justify-between border-b border-white/[0.045] px-5 py-3">
+        <span className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+          Campos del body
+        </span>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs text-violet-300 hover:bg-violet-400/10"
+        >
+          <CirclePlus size={14} /> Añadir
+        </button>
+      </div>
+      <div
+        className={`grid ${simple ? "grid-cols-[32px_minmax(130px,.8fr)_minmax(180px,1.2fr)_42px]" : "grid-cols-[32px_88px_minmax(120px,.8fr)_minmax(180px,1.2fr)_42px]"} border-b border-white/[0.04] px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase`}
+      >
+        <span />
+        {simple ? null : <span>Tipo</span>}
+        <span>Clave</span>
+        <span>Valor</span>
+        <span />
+      </div>
+    </>
+  );
 }
 
 function RemoveBodyRow({ onClick }: { onClick: () => void }) {
-  return <button type="button" onClick={onClick} className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-red-400/10 hover:text-red-300" aria-label="Eliminar campo"><Trash2 size={13}/></button>;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-red-400/10 hover:text-red-300"
+      aria-label="Eliminar campo"
+    >
+      <Trash2 size={13} />
+    </button>
+  );
 }
 
-function BinaryBodyEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  return <div className="grid min-h-[290px] place-items-center p-6 text-center"><div><div className="mx-auto grid size-12 place-items-center rounded-2xl border border-violet-300/15 bg-violet-500/10 text-violet-300"><FileUp size={20}/></div><p className="mt-4 text-xs font-medium text-white">{fileName(value) || "Selecciona el archivo que se enviará"}</p>{value ? <p className="mx-auto mt-2 max-w-md truncate font-mono text-[10px] text-muted-foreground">{value}</p> : null}<button type="button" onClick={async () => { const path = await chooseBodyFile(); if (path) onChange(path); }} className="mt-5 h-9 rounded-lg border border-violet-300/15 bg-violet-500/10 px-4 text-xs text-violet-200 hover:bg-violet-500/15">{value ? "Cambiar archivo" : "Elegir archivo"}</button></div></div>;
+function BinaryBodyEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid min-h-[290px] place-items-center p-6 text-center">
+      <div>
+        <div className="mx-auto grid size-12 place-items-center rounded-2xl border border-violet-300/15 bg-violet-500/10 text-violet-300">
+          <FileUp size={20} />
+        </div>
+        <p className="mt-4 text-xs font-medium text-white">
+          {fileName(value) || "Selecciona el archivo que se enviará"}
+        </p>
+        {value ? (
+          <p className="mx-auto mt-2 max-w-md truncate font-mono text-[10px] text-muted-foreground">
+            {value}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          onClick={async () => {
+            const path = await chooseBodyFile();
+            if (path) onChange(path);
+          }}
+          className="mt-5 h-9 rounded-lg border border-violet-300/15 bg-violet-500/10 px-4 text-xs text-violet-200 hover:bg-violet-500/15"
+        >
+          {value ? "Cambiar archivo" : "Elegir archivo"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
-function GraphqlBodyEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const parsed = parseSavedValue<{ query: string; variables: string }>(value, { query: "", variables: "{}" });
-  const patch = (next: Partial<typeof parsed>) => onChange(JSON.stringify({ ...parsed, ...next }));
-  return <div className="grid min-h-[290px] grid-cols-[1.2fr_.8fr] divide-x divide-white/[0.05] max-md:grid-cols-1 max-md:divide-x-0"><label className="flex min-h-0 flex-col"><span className="px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">Query</span><textarea value={parsed.query} onChange={(event) => patch({ query: event.target.value })} autoComplete="off" spellCheck={false} placeholder={"query GetUser {\n  user { id name }\n}"} className="min-h-56 flex-1 resize-none bg-black/20 p-4 font-mono text-xs leading-6 text-violet-100 outline-none"/></label><label className="flex min-h-0 flex-col border-t border-white/[0.05] md:border-t-0"><span className="px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">Variables JSON</span><textarea value={parsed.variables} onChange={(event) => patch({ variables: event.target.value })} autoComplete="off" spellCheck={false} placeholder={'{\n  "id": "1"\n}'} className="min-h-40 flex-1 resize-none bg-black/20 p-4 font-mono text-xs leading-6 text-sky-200 outline-none"/></label></div>;
+function GraphqlBodyEditor({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const parsed = parseSavedValue<{ query: string; variables: string }>(value, {
+    query: "",
+    variables: "{}",
+  });
+  const patch = (next: Partial<typeof parsed>) =>
+    onChange(JSON.stringify({ ...parsed, ...next }));
+  return (
+    <div className="grid min-h-[290px] grid-cols-[1.2fr_.8fr] divide-x divide-white/[0.05] max-md:grid-cols-1 max-md:divide-x-0">
+      <label className="flex min-h-0 flex-col">
+        <span className="px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
+          Query
+        </span>
+        <textarea
+          value={parsed.query}
+          onChange={(event) => patch({ query: event.target.value })}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={"query GetUser {\n  user { id name }\n}"}
+          className="min-h-56 flex-1 resize-none bg-black/20 p-4 font-mono text-xs leading-6 text-violet-100 outline-none"
+        />
+      </label>
+      <label className="flex min-h-0 flex-col border-t border-white/[0.05] md:border-t-0">
+        <span className="px-4 py-2 text-[9px] tracking-[0.12em] text-muted-foreground uppercase">
+          Variables JSON
+        </span>
+        <textarea
+          value={parsed.variables}
+          onChange={(event) => patch({ variables: event.target.value })}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder={'{\n  "id": "1"\n}'}
+          className="min-h-40 flex-1 resize-none bg-black/20 p-4 font-mono text-xs leading-6 text-sky-200 outline-none"
+        />
+      </label>
+    </div>
+  );
 }
 
 function ResponsePanel({
+  insight,
   response,
   loading,
   onSaveToEnv,
 }: {
+  insight?: React.ReactNode;
   response: HttpResponse | null;
   loading: boolean;
   onSaveToEnv?: (path: string, value: string) => void;
 }) {
   const sendShortcut = useSendShortcut();
-  const [view, setView] = useState<"pretty" | "raw" | "headers">("pretty");
+  const [view, setView] = useState<"pretty" | "raw" | "headers" | "timing">(
+    "pretty",
+  );
   const [copied, setCopied] = useState(false);
   const content = response
     ? view === "headers"
@@ -1096,66 +1399,61 @@ function ResponsePanel({
     window.setTimeout(() => setCopied(false), 1200);
   }
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-[var(--flux-panel-2)] ring-1 ring-[var(--flux-line)]">
-      <div className="flex min-h-10 shrink-0 flex-wrap items-center justify-between gap-2 px-4 py-1">
-        <div className="flex flex-wrap items-center gap-2 text-[9px] font-semibold tracking-[0.1em] text-muted-foreground uppercase">
-          <span>Response</span>
-          {response ? (
-            <>
-              <span
-                className={`rounded-md px-2.5 py-1 text-xs font-semibold tracking-normal normal-case ${statusColor(response.status)}`}
-              >
-                {response.status} {response.statusText}
-              </span>
-              <span className="text-xs tracking-normal text-zinc-300 normal-case">
-                {response.durationMs} ms
-              </span>
-              <span className="text-xs tracking-normal text-zinc-300 normal-case">
-                {formatBytes(response.sizeBytes)}
-              </span>
-            </>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-1">
-          {response ? (
-            <>
-              <ResponseViewButton
-                active={view === "pretty"}
-                onClick={() => setView("pretty")}
-              >
-                JSON
-              </ResponseViewButton>
-              <ResponseViewButton
-                active={view === "raw"}
-                onClick={() => setView("raw")}
-              >
-                Raw
-              </ResponseViewButton>
-              <ResponseViewButton
-                active={view === "headers"}
-                onClick={() => setView("headers")}
-              >
-                Headers ({response.headers.length})
-              </ResponseViewButton>
-              {view !== "pretty" ? (
-                <button
-                  type="button"
-                  onClick={copy}
-                  aria-label="Copiar respuesta"
-                  className="ml-1 grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-white/5 hover:text-white"
-                >
-                  {copied ? (
-                    <Check size={13} className="text-emerald-300" />
-                  ) : (
-                    <Copy size={13} />
-                  )}
-                </button>
-              ) : null}
-            </>
-          ) : null}
-        </div>
+    <div className="fx-response-pane">
+      <div className="fx-response-heading">
+        <span>Respuesta</span>
+        {response && (
+          <>
+            <span
+              className={`fx-status ${response.status < 400 ? "is-ok" : "is-error"}`}
+            >
+              {response.status} {response.statusText}
+            </span>
+            <span className="fx-response-meta">
+              {response.durationMs} ms · {formatBytes(response.sizeBytes)}
+            </span>
+            <button
+              className="fx-icon-button ml-auto"
+              onClick={copy}
+              aria-label="Copiar respuesta"
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+          </>
+        )}
       </div>
-      <div key={response ? `${response.status}-${response.durationMs}-${response.sizeBytes}` : "empty"} className="flux-fade-in min-h-0 flex-1 overflow-auto">
+      <div className="fx-segments fx-response-tabs">
+        <button
+          aria-pressed={view === "pretty"}
+          onClick={() => setView("pretty")}
+        >
+          Cuerpo
+        </button>
+        <button
+          aria-pressed={view === "headers"}
+          onClick={() => setView("headers")}
+        >
+          Encabezados {response?.headers.length ?? ""}
+        </button>
+        <button
+          aria-pressed={view === "timing"}
+          onClick={() => setView("timing")}
+        >
+          Tiempos
+        </button>
+        <button aria-pressed={view === "raw"} onClick={() => setView("raw")}>
+          Raw
+        </button>
+      </div>
+      {insight}
+      <div
+        key={
+          response
+            ? `${response.status}-${response.durationMs}-${response.sizeBytes}`
+            : "empty"
+        }
+        className="flux-fade-in min-h-0 flex-1 overflow-auto"
+      >
         {loading ? (
           <div className="grid h-full min-h-[170px] place-items-center text-xs text-muted-foreground">
             <span className="flex items-center gap-2">
@@ -1167,7 +1465,34 @@ function ResponsePanel({
             </span>
           </div>
         ) : response ? (
-          view === "pretty" ? (
+          view === "timing" ? (
+            <div className="fx-timing">
+              <div>
+                <span>Tiempo total</span>
+                <strong>{response.durationMs} ms</strong>
+              </div>
+              <div className="fx-timing-track">
+                <span />
+              </div>
+              <p>
+                Duración total medida por Flux. El cliente actual no desglosa
+                DNS, conexión y transferencia.
+              </p>
+              <div>
+                <span>Tamaño recibido</span>
+                <strong>{formatBytes(response.sizeBytes)}</strong>
+              </div>
+            </div>
+          ) : view === "headers" ? (
+            <div className="fx-response-headers">
+              {response.headers.map((header, index) => (
+                <div key={`${header.name}-${index}`}>
+                  <span>{header.name}</span>
+                  <span>{header.value}</span>
+                </div>
+              ))}
+            </div>
+          ) : view === "pretty" ? (
             <JsonTree source={response.body} onSaveToEnv={onSaveToEnv} />
           ) : (
             <pre className="h-full overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-xs leading-6 text-violet-100">
@@ -1178,7 +1503,9 @@ function ResponsePanel({
           <div className="grid h-full min-h-[170px] place-items-center px-6 text-center">
             <div className="flux-fade-in">
               <Send size={18} className="mx-auto text-muted-foreground/60" />
-              <p className="mt-3 text-sm text-zinc-200">Listo para tu primera petición</p>
+              <p className="mt-3 text-sm text-zinc-200">
+                Listo para tu primera petición
+              </p>
               <p className="mt-1.5 text-xs text-muted-foreground">
                 Escribe una URL y pulsa{" "}
                 <kbd className="rounded bg-white/[0.08] px-1.5 py-0.5 font-sans text-[10px] text-zinc-200">
@@ -1197,26 +1524,6 @@ function ResponsePanel({
         )}
       </div>
     </div>
-  );
-}
-
-function ResponseViewButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`h-8 rounded-md px-2 text-[10px] ${active ? "bg-violet-500/15 text-violet-200" : "text-muted-foreground hover:text-white"}`}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -1305,13 +1612,6 @@ function CurlImportDialog({
   );
 }
 
-function statusColor(status: number) {
-  if (status >= 200 && status < 300)
-    return "bg-emerald-400/15 text-emerald-300";
-  if (status >= 300 && status < 400) return "bg-sky-400/15 text-sky-300";
-  if (status >= 400 && status < 500) return "bg-amber-400/15 text-amber-300";
-  return "bg-rose-400/15 text-rose-300";
-}
 function formatBytes(bytes: number) {
   return bytes < 1024
     ? `${bytes} B`
@@ -1322,9 +1622,7 @@ function formatBytes(bytes: number) {
 function encodeTemplateValue(value: string) {
   return value
     .split(/(\{\{[A-Za-z_][A-Za-z0-9_]*}\})/g)
-    .map((part) =>
-      /^\{\{.+}\}$/.test(part) ? part : encodeURIComponent(part),
-    )
+    .map((part) => (/^\{\{.+}\}$/.test(part) ? part : encodeURIComponent(part)))
     .join("");
 }
 
@@ -1387,7 +1685,9 @@ function isJsonArray(value: string) {
   }
 }
 
-function validateJson(value: string): { valid: boolean; error?: string } | null {
+function validateJson(
+  value: string,
+): { valid: boolean; error?: string } | null {
   if (!value.trim()) return null;
   try {
     JSON.parse(value);
@@ -1407,16 +1707,26 @@ function formatJson(value: string): string | null {
 }
 
 const VOID_TAGS = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input",
-  "link", "meta", "param", "source", "track", "wbr",
+  "area",
+  "base",
+  "br",
+  "col",
+  "embed",
+  "hr",
+  "img",
+  "input",
+  "link",
+  "meta",
+  "param",
+  "source",
+  "track",
+  "wbr",
 ]);
 
 function formatMarkup(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  const withBreaks = trimmed
-    .replace(/>\s*</g, "><")
-    .replace(/></g, ">\n<");
+  const withBreaks = trimmed.replace(/>\s*</g, "><").replace(/></g, ">\n<");
   let indent = 0;
   return withBreaks
     .split("\n")

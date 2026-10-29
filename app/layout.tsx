@@ -1,25 +1,20 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { Instrument_Sans, Spline_Sans_Mono } from "next/font/google";
 import "./globals.css";
+import "./redesign.css";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/sonner";
 
-const jetbrainsMono = JetBrains_Mono({subsets:['latin'],variable:'--font-mono'});
-
-const jakarta = Plus_Jakarta_Sans({
-  variable: "--font-ui",
+const mono = Spline_Sans_Mono({
   subsets: ["latin"],
+  variable: "--font-code",
   display: "swap",
 });
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const sans = Instrument_Sans({
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  variable: "--font-ui",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -36,7 +31,13 @@ export default function RootLayout({
     <html
       lang="es"
       suppressHydrationWarning
-      className={cn("h-full", "antialiased", jakarta.variable, geistSans.variable, geistMono.variable, "font-sans", jetbrainsMono.variable)}
+      className={cn(
+        "h-full",
+        "antialiased",
+        sans.variable,
+        mono.variable,
+        "font-sans",
+      )}
     >
       <body
         suppressHydrationWarning
