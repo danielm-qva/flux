@@ -6,6 +6,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 
 ## [Unreleased]
 
+## [3.7.1] - 2026-10-30
+
+### Corregido
+
+- Los campos con autocompletado de variables de entorno editan siempre el texto nativo al tener foco, de modo que el cursor y la selección coinciden con lo que se ve.
+
 ## [3.7.0] - 2026-10-29
 
 Flux estrena una identidad visual con acento naranja, temas Día y Noche y una navegación más clara para trabajar con APIs.
@@ -236,6 +242,7 @@ Primera release estable de Flux para Windows.
 - Verificación criptográfica obligatoria de los paquetes de actualización.
 - Clave privada de actualizaciones excluida del repositorio.
 
+[3.7.1]: https://github.com/danielm-qva/flux/releases/tag/v3.7.1
 [3.7.0]: https://github.com/danielm-qva/flux/releases/tag/v3.7.0
 [3.6.0]: https://github.com/danielm-qva/flux/releases/tag/v3.6.0
 [3.5.0]: https://github.com/danielm-qva/flux/releases/tag/v3.5.0
