@@ -33,7 +33,9 @@ export function EnvironmentAutocomplete({
   variableChips = false,
 }: Props) {
   const [focused, setFocused] = useState(false);
-  const showHighlight = highlightVariables && (!variableChips || !focused);
+  // Edit the native text directly so its caret, selection and glyphs always agree.
+  // The decorative variable overlay is only shown when the field is not focused.
+  const showHighlight = highlightVariables && !focused;
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const [token, setToken] = useState<{
